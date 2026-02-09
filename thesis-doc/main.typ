@@ -68,6 +68,8 @@
 
 #include "model_descriptions.typ"
 
+#include "model_implementations.typ"
+
 #set page(margin: 0.85in)
 #set text(size: 10pt)
 #set heading(numbering: none)
