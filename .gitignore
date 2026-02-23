@@ -1,3 +1,11 @@
 # folders
 repast-hpc-tutorial
 literature
+
+misinformation-diffusion-repast-hpc/bin
+misinformation-diffusion-repast-hpc/output
+misinformation-diffusion-repast-hpc/logs
+misinformation-diffusion-repast-hpc/objects
+misinformation-diffusion-repast-hpc/.cache
+misinformation-diffusion-repast-hpc/.env
+misinformation-diffusion-repast-hpc/compile_commands.json
