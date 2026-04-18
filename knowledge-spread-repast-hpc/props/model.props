@@ -1,0 +1,10 @@
+#Properties file
+birthFile = ./props/birth.csv
+edgeFile = ./props/edges.csv
+totalTicks = 100
+distThreshold = 10
+useSocialNetData = 1;
+runSocial = 0;
+runCentroid = 0;
+runConferences = 0;
+runGravity = 0;

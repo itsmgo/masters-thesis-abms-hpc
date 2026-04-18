@@ -357,11 +357,9 @@ void MisinformationDiffusionModel::initNetwork() {
         } else if (rank == 0) {
             if (requested_ghosts.find(target_id) == requested_ghosts.end()) {
                 repast::AgentId ghost_id(target_id, target_owner, 0);
-                non_zero_rank_agent_ids.push_back(ghost_id);
             }
             if (requested_ghosts.find(source_id) == requested_ghosts.end()) {
                 repast::AgentId ghost_id(source_id, source_owner, 0);
-                non_zero_rank_agent_ids.push_back(ghost_id);
             }
         }
     }
@@ -381,8 +379,7 @@ void MisinformationDiffusionModel::initNetwork() {
                "Creating edges for rank " + std::to_string(rank) + "...");
     int total_local_edges = 0;
     total_edges = edges.size();
-    // Now that local agents and ghost agents are in the context, we can link
-    // them.
+    // Now that local agents and ghost agents are in the context, we can link them
     for (auto edge : edges) {
         int source_id = edge.first;
         int target_id = edge.second;
@@ -604,9 +601,7 @@ double StatDataSource::getData() {
         // For globally known constants:
         // We only return the value on Rank 0 and 0 on all other ranks.
         // This prevents std::plus from multiplying the parameter by the number of
-        // ranks!
-        // ... (Add your other static properties here similarly, e.g.,
-        // model->alpha_hoax_credibility_)
+        // ranks
         case StatType::RUN_ID:
             return rank == 0 ? model->run_id : 0;
         case StatType::TOTAL_VERTICES:

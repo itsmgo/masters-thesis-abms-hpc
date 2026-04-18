@@ -11,4 +11,13 @@ misinformation-diffusion-repast-hpc/.cache
 misinformation-diffusion-repast-hpc/.env
 misinformation-diffusion-repast-hpc/compile_commands.json
 
+# knowledge spread model
+knowledge-spread-repast-hpc/bin
+knowledge-spread-repast-hpc/output
+knowledge-spread-repast-hpc/logs
+knowledge-spread-repast-hpc/objects
+knowledge-spread-repast-hpc/.cache
+knowledge-spread-repast-hpc/.env
+knowledge-spread-repast-hpc/compile_commands.json
+
 notes.md

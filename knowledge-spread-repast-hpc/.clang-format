@@ -1,0 +1,63 @@
+# Based on LLVM style but adjusted for research / HPC projects
+BasedOnStyle: LLVM
+Language: Cpp
+
+# Line width
+ColumnLimit: 85
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+
+# Braces
+BreakBeforeBraces: Attach
+AllowShortBlocksOnASingleLine: Never
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: Inline
+
+# Includes
+IncludeBlocks: Regroup
+SortIncludes: true
+
+# Spacing
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpacesInAngles: false
+SpaceInEmptyParentheses: false
+
+# Alignment
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignOperands: Align
+AlignTrailingComments: true
+
+# Pointers & references
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# Wrapping
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerIndentWidth: 4
+BreakInheritanceList: BeforeComma
+
+# Templates
+AlwaysBreakTemplateDeclarations: Yes
+
+# Empty lines
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+
+# Switch statements
+IndentCaseLabels: true
+
+# Preprocessor
+IndentPPDirectives: None
+
+# Namespace formatting
+NamespaceIndentation: None
+
+# C++11+
+Standard: c++17

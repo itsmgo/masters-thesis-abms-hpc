@@ -49,3 +49,54 @@ The implementation will utilize Repast HPC's default `GhostMode` synchronization
   caption: [Repast HPC memory management applied to the SBFC model], 
   placement: auto,
 ) <MisinformationRepast>
+
+#pagebreak()
+
+== Parallelizing the socio-epistemic knowledge spread model
+
+Translating the socio-epistemic _"Opinion Dynamics of Science"_ model from its native NetLogo environment to Repast HPC introduces architectural complexities fundamentally different from the misinformation diffusion model. While both rely on network topologies, the socio-epistemic model operates within a highly coupled dual-layer environment: agents traverse a continuous spatial lattice representing abstract mental models (the epistemic layer) while simultaneously evaluating connections across a multi-layered graph (the social layer).
+
+Distributing this model across multiple MPI processes requires a careful orchestration of Repast HPC's spatial partitioning, network projections, and ghost agent synchronization to ensure that the emergent formation of the giant component observed in the historical general relativity community is accurately and deterministically reproduced at scale.
+
+#v(0.25cm)
+*Representing the socio-epistemic agent and dual projections*
+
+In Repast HPC, the global population of scientists is managed within a `repast::SharedContext`. To represent the complex environmental duality of the NetLogo model, this `Context` must be projected into two distinct spaces simultaneously:
+
+- `repast::SharedContinuousSpace`: This projection replaces the discrete patches of NetLogo. It provides a continuous 2D Cartesian coordinate system where agents represent their current epistemic stance. The Euclidean distance between coordinates serves as the proxy for cognitive similarity.
+
+- `repast::SharedNetwork`: Superimposed over the continuous space, this directed network projection manages the historical or procedural collaboration edges.
+
+The local state variables that each individual scientist agent encapsulates are described in @ScientistAgentAttrs.
+
+#figure(
+  table(
+    columns: (auto, 1fr),
+    inset: (x: 8pt),
+    align: (x, y) => if x == 0 { right } else { left },
+    stroke: (x, y) => if y == 0 or y == 3 {
+      (right: none, top: none, bottom: 0.5pt, left: none)
+    } else { none },
+    table.header([*Attribute*], [*Description*]),
+    [`birth`], [Serves as an age and rigidity modifier],
+    [`conference_flag`], [Flag for temporary aggregate movement from the conference force],
+    [`topic_color`], [Indicator for which epistemic cluster the agent belongs to],
+  ),
+  caption: "Scientist agent internal attributes",
+  placement: auto,
+) <ScientistAgentAttrs>
+
+*Spatial partitioning and the ghost buffer zone*
+
+The primary challenge in parallelizing this model lies in the spatial decomposition of the epistemic layer. Repast HPC divides the continuous space into geometric regions, assigning each region to a specific MPI rank. However, the model's core attraction forces, specifically the Semantic Closeness force and the Gravity force, require agents to evaluate the exact positions and densities of other agents within a specific radius.
+
+Because an agent A near the boundary of node 1's spatial partition might need to evaluate an agent B residing on node 2, a _buffer zone_ must be established. Repast HPC populates this buffer zone with ghost agents. The width of this buffer zone must be mathematically strictly greater than or equal to the maximum possible dist parameter configured for the simulation sweep. If the buffer is too narrow, the spatial density calculations driving the gravity force will experience boundary truncation errors, invalidating the simulation's emergent dynamics.
+
+*Synchronization and resolving the network-space conflict*
+
+The dual-layer nature of the model creates a severe parallelization conflict: two agents perfectly adjacent in the social network might reside on entirely opposite sides of the epistemic spatial grid, and therefore on completely different compute nodes. If agent A on node 1 needs to evaluate its co-author agent B on node 3 for the Social movement force, node 1 requires a network-based ghost of agent B, independent of the spatial buffer zone.
+
+To maintain coherence across both projections, the Repast HPC simulation must execute a complex, two-tiered synchronization at the beginning of every tick. The implementation defines a `ScientistPackage`: a lightweight C++ struct containing only the mutable properties of the agent.
+
+During synchronization, the system first updates the status of all ghost agents across the network edges, ensuring topological consistency. Immediately following, it synchronizes the spatial buffer zones to ensure geographic consistency. Only after both synchronization barriers are cleared can the scheduler safely iterate over the local agents to calculate the logistic speed function and execute the movement algorithms.
+

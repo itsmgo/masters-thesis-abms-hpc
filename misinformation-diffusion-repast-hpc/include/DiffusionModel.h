@@ -62,7 +62,6 @@ class MisinformationDiffusionModel {
 
     DiffusionAgentPackageProvider* provider;
     DiffusionAgentPackageReceiver* receiver;
-    std::vector<repast::AgentId> non_zero_rank_agent_ids;
 
     repast::SVDataSet* dynamic_dataset_;
 
