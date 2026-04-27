@@ -2,9 +2,9 @@
 birthFile = ./props/birth.csv
 edgeFile = ./props/edges.csv
 totalTicks = 100
-distThreshold = 10
+distThreshold = 30
 useSocialNetData = 1;
-runSocial = 0;
-runCentroid = 0;
+runSocial = 1;
+runCentroid = 1;
 runConferences = 0;
 runGravity = 0;

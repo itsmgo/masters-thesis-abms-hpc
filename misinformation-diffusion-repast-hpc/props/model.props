@@ -1,12 +1,12 @@
 #Properties file
 network_file = ./props/network.gml
 total_ticks = 168
-alpha_hoax_credibility = 0.8
-beta_spreading_rate = 0.5
-believer_percentage = 0.1
-influencer_p_verify = 0.2
+alpha_hoax_credibility = 0.5
+beta_spreading_rate = 0.8
+believer_percentage = 0.95
+influencer_p_verify = 0.1
 influencer_p_forget = 0.05
-normal_p_verify = 0.05
+normal_p_verify = 0.02
 normal_p_forget = 0.1
 scholar_p_verify = 0.3
 scholar_p_forget = 0.07

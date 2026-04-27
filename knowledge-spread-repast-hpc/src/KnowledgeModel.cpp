@@ -1,11 +1,8 @@
 #include "KnowledgeModel.h"
 
 #include "KnowledgeAgent.h"
-#include "NetworkUtils.h"
-#include "mpi.h"
 #include "repast_hpc/AgentId.h"
 #include "repast_hpc/AgentRequest.h"
-#include "repast_hpc/Moore2DGridQuery.h"
 #include "repast_hpc/Properties.h"
 #include "repast_hpc/RepastProcess.h"
 #include "repast_hpc/SVDataSetBuilder.h"
@@ -23,18 +20,16 @@ BOOST_CLASS_EXPORT_GUID(repast::SpecializedProjectionInfoPacket<
                         "SpecializedProjectionInfoPacket_EDGE");
 
 const int NUM_CLUSTERS = 6;
-const int CLUSTER_SIZE = 10000;
-const double CLUSTER_STD_DEV = 14;
-const double CLUSTER_CENTER_SCALE_FACTOR = 0.75;
+const int CLUSTER_SIZE = 30000;
+const double CLUSTER_STD_DEV = 24;
+const double CLUSTER_CENTER_SCALE_FACTOR = 0.95;
 
 const double WORLD_X_BOUND = 50.0;
 const double WORLD_Y_BOUND = 50.0;
 
 const int NUM_CENTROIDS = 8;
 
-const int NETWORK_NEIGHBOUR_MAX_DEGREE =
-    3; // Should be 3 but I don't know if network->adjecents() works for non-local
-       // agents
+const int NETWORK_NEIGHBOUR_MAX_DEGREE = 3; // Should be 3 but I don't know if network->adjecents() works for non-local agents
 
 const int GRAVITY_SAMPLE_RADIUS = 1;
 const int GRAVITY_POPULATION_RADIUS = 5;
@@ -139,8 +134,7 @@ KnowledgeAgentPackageReceiver::KnowledgeAgentPackageReceiver(
 KnowledgeAgent*
 KnowledgeAgentPackageReceiver::createAgent(KnowledgeAgentPackage package) {
     repast::AgentId id(package.id, package.rank, package.type, package.currentRank);
-    return new KnowledgeAgent(id, package.birth, package.isConferencing,
-                              package.color);
+    return new KnowledgeAgent(id, package.birth, package.position, package.color);
 }
 
 void KnowledgeAgentPackageReceiver::updateAgent(KnowledgeAgentPackage package) {
@@ -161,26 +155,12 @@ KnowledgeSpreadModel::KnowledgeSpreadModel(std::string propsFile, int argc,
         repast::strToInt(props->getProperty("useSocialNetData")) == 1;
     runSocial_ = repast::strToInt(props->getProperty("runSocial")) == 1;
     runCentroid_ = repast::strToInt(props->getProperty("runCentroid")) == 1;
-    runConferences_ = repast::strToInt(props->getProperty("runConferences")) == 1;
-    runGravity_ = repast::strToInt(props->getProperty("runGravity")) == 1;
 
     // Initialize Projections (Space and Network)
     repast::GridDimensions dimensions(
         repast::Point<double>(-WORLD_X_BOUND, -WORLD_Y_BOUND),
         repast::Point<double>(WORLD_X_BOUND*2, WORLD_Y_BOUND*2));
-    std::vector<int> processDims = {2, 2};
 
-    knowledgeContinuousSpace =
-        new repast::SharedContinuousSpace<KnowledgeAgent, repast::StrictBorders,
-                                          repast::SimpleAdder<KnowledgeAgent>>(
-            "KnowledgeContinuousSpace", dimensions, processDims, 0, comm);
-    context.addProjection(knowledgeContinuousSpace);
-    bufferSize = (int)ceil(distThreshold_);
-    knowledgeDiscreteSpace =
-        new repast::SharedDiscreteSpace<KnowledgeAgent, repast::StrictBorders,
-                                        repast::SimpleAdder<KnowledgeAgent>>(
-            "KnowledgeDiscreteSpace", dimensions, processDims, bufferSize, comm);
-    context.addProjection(knowledgeDiscreteSpace);
     regionLayer = new repast::DiscreteValueLayer<std::pair<Color, std::vector<double>>, repast::StrictBorders>(
         "KnowledgeSpaceValueLayer", dimensions, true);
 
@@ -203,6 +183,30 @@ KnowledgeSpreadModel::KnowledgeSpreadModel(std::string propsFile, int argc,
     int rank = repast::RepastProcess::instance()->rank();
 
     // Create the individual dynamic data sets to be added to the builder
+    dynamic_builder.addDataSource(repast::createSVDataSource(
+        "total_blue", new StatDataSource(this, StatType::TOTAL_BLUE, rank),
+        std::plus<double>()));
+    dynamic_builder.addDataSource(repast::createSVDataSource(
+        "total_orange", new StatDataSource(this, StatType::TOTAL_ORANGE, rank),
+        std::plus<double>()));
+    dynamic_builder.addDataSource(repast::createSVDataSource(
+        "total_red", new StatDataSource(this, StatType::TOTAL_RED, rank),
+        std::plus<double>()));
+    dynamic_builder.addDataSource(repast::createSVDataSource(
+        "total_yellow", new StatDataSource(this, StatType::TOTAL_YELLOW, rank),
+        std::plus<double>()));
+    dynamic_builder.addDataSource(repast::createSVDataSource(
+        "total_green", new StatDataSource(this, StatType::TOTAL_GREEN, rank),
+        std::plus<double>()));
+    dynamic_builder.addDataSource(repast::createSVDataSource(
+        "total_purple", new StatDataSource(this, StatType::TOTAL_PURPLE, rank),
+        std::plus<double>()));
+    dynamic_builder.addDataSource(repast::createSVDataSource(
+        "total_magenta", new StatDataSource(this, StatType::TOTAL_MAGENTA, rank),
+        std::plus<double>()));
+    dynamic_builder.addDataSource(repast::createSVDataSource(
+        "total_white", new StatDataSource(this, StatType::TOTAL_WHITE, rank),
+        std::plus<double>()));
     dynamic_builder.addDataSource(repast::createSVDataSource(
         "run_id", new StatDataSource(this, StatType::RUN_ID, rank),
         std::plus<double>()));
@@ -245,18 +249,29 @@ void KnowledgeSpreadModel::setupKnowledgeSpace() {
     std::vector<ScientificPaper> papers;
     std::vector<KnowledgeCentroid> centroids;
 
+    std::vector<std::pair<double, double>> clusterPredefinedLocations = {
+        {-6.108634, 10.140601},
+        {-10.147067, 0.537975},
+        {10.736579, 16.038066},
+        {-22.348510, 15.329037},
+        {-0.362956, -22.001765},
+        {3.552401, 15.067330}
+    };
+
     // Generate clusters
     for (int i = 0; i < NUM_CLUSTERS; i++) {
-        double centerX =
-            repast::Random::instance()
-                ->createUniDoubleGenerator(-WORLD_X_BOUND, WORLD_X_BOUND)
-                .next() *
-            CLUSTER_CENTER_SCALE_FACTOR;
-        double centerY =
-            repast::Random::instance()
-                ->createUniDoubleGenerator(-WORLD_Y_BOUND, WORLD_Y_BOUND)
-                .next() *
-            CLUSTER_CENTER_SCALE_FACTOR;
+        // double centerX =
+        //     repast::Random::instance()
+        //         ->createNormalGenerator(0.0, WORLD_X_BOUND / 2.5)
+        //         .next() *
+        //     CLUSTER_CENTER_SCALE_FACTOR;
+        // double centerY =
+        //     repast::Random::instance()
+        //         ->createNormalGenerator(0.0, WORLD_Y_BOUND / 2.5)
+        //         .next() *
+        //     CLUSTER_CENTER_SCALE_FACTOR;
+        double centerX = clusterPredefinedLocations[i].first;
+        double centerY = clusterPredefinedLocations[i].second;
 
         for (int j = 0; j < CLUSTER_SIZE / NUM_CLUSTERS; j++) {
             double directionAngle = repast::Random::instance()
@@ -280,13 +295,25 @@ void KnowledgeSpreadModel::setupKnowledgeSpace() {
         logger.log(repast::DEBUG, "Created cluster of papers in ("+std::to_string(centerX)+", "+std::to_string(centerY)+"), id="+std::to_string(i));
     }
 
+    std::vector<std::vector<double>> centroidPredefinedLocations = {
+        {-6.108634, 10.140601},
+        {-10.147067, 0.537975},
+        {10.736579, 16.038066},
+        {-22.348510, 15.329037},
+        {-0.362956, -22.001765},
+        {3.552401, 15.067330},
+        {0.0, 0.0},
+        {30.0, 30.0},
+    };
+
     // Reset centroids
     for (int i = 0; i < NUM_CENTROIDS; i++) {
         int randomIndex =
             repast::Random::instance()
                 ->createUniIntGenerator(0, candidatePaperLocs.size() - 1)
                 .next();
-        std::vector<double> centroidLoc = candidatePaperLocs[randomIndex];
+        // std::vector<double> centroidLoc = candidatePaperLocs[randomIndex];
+        std::vector<double> centroidLoc = centroidPredefinedLocations[i];
         Color centroidColor = ALL_COLORS[i + 1];
         centroids.emplace_back(centroidLoc, centroidColor);
         logger.log(repast::DEBUG, "Created knowledge centroid in ("+std::to_string(centroidLoc[0])+", "+std::to_string(centroidLoc[1])+"), color="+std::to_string(centroidColor));
@@ -338,6 +365,29 @@ void KnowledgeSpreadModel::setupKnowledgeSpace() {
             }
         }
     }
+
+    // Write to file each one of the coordinate color pairs that define the knowledge space, to be used in the serialization
+    int rank = repast::RepastProcess::instance()->rank();
+    if (rank == 0) {
+        std::ofstream knowledgeSpaceOut("./output/knowledge_space.csv");
+        if (knowledgeSpaceOut.is_open()) {
+            knowledgeSpaceOut << "x,y,color,centroid_x,centroid_y\n";
+            for (double x = -WORLD_X_BOUND + 1; x < WORLD_X_BOUND; x++) {
+                for (double y = -WORLD_Y_BOUND + 1; y < WORLD_Y_BOUND; y++) {
+                    auto layerValue = regionLayer->get(discretizeVec2({x, y}));
+                    if (layerValue.first == BLACK) {
+                        knowledgeSpaceOut << x << "," << y << "," << layerValue.first << "," << -50.0 << "," << -50.0 << "\n";
+                        continue;
+                    }
+                    knowledgeSpaceOut << x << "," << y << "," << layerValue.first << "," << layerValue.second[0] << "," << layerValue.second[1] << "\n";
+                }
+            }
+            knowledgeSpaceOut.close();
+        } else {
+            logger.log(repast::ERROR, "Unable to open file to write knowledge space data");
+        }
+    }
+
     LOG_RANK0(logger, repast::DEBUG, "Knowledge space successfully set up");
 }
 
@@ -362,7 +412,6 @@ void KnowledgeSpreadModel::setupSocialNetwork() {
     std::string birthLine;
     int i = 0;
     std::map<std::string, int> agentIdByName;
-    std::vector<std::pair<int, int>> agentsBasicInfo;
     int totalLocalAgents = 0;
     while (std::getline(birthIn, birthLine)) {
         std::stringstream ss(birthLine);
@@ -381,18 +430,34 @@ void KnowledgeSpreadModel::setupSocialNetwork() {
             // This agent belongs to this rank.
             KnowledgeAgent* agent = new KnowledgeAgent(id, std::stod(birthStr));
             context.addAgent(agent);
-            knowledgeContinuousSpace->moveTo(id, agentLoc);
-            knowledgeDiscreteSpace->moveTo(id, discretizeVec2(agentLoc));
+            agent->setPosition(agentLoc);
+            agent->setColor(regionLayer->get(discretizeVec2(agentLoc)).first);
             totalLocalAgents++;
         }
         agentIdByName[nameStr] = id.id();
-        agentsBasicInfo.emplace_back(i, std::stod(birthStr));
         i++;
         totalAgents++;
     }
     birthIn.close();
     logger.log(repast::DEBUG, "Created " + std::to_string(totalLocalAgents) +
                                   " local agents for rank " + std::to_string(rank));
+
+    // Write to file each one of the agent's coordinate and color
+    std::ofstream socialNetworkOut("./output/social_network_" + std::to_string(rank) + ".csv");
+    if (socialNetworkOut.is_open()) {
+        socialNetworkOut << "id,name,x,y,color\n";
+        for (const auto& [name, id] : agentIdByName) {
+            auto agent = context.getAgent(repast::AgentId(id, rank, 0));
+            if (agent != nullptr) {
+                std::vector<double> pos = agent->getPosition();
+                socialNetworkOut << id << "," << name << "," << pos[0] << "," << pos[1] << "," << agent->getColor() << "\n";
+            }
+        }
+        socialNetworkOut.close();
+    } else {
+        logger.log(repast::ERROR, "Unable to open file to write social network data");
+    }
+
 
     // Step 2: Parse temporal edges
     logger.log(repast::DEBUG,
@@ -418,7 +483,7 @@ void KnowledgeSpreadModel::setupSocialNetwork() {
         auto itEdge2 = agentIdByName.find(targetName);
         if (itEdge1 != agentIdByName.end() && itEdge2 != agentIdByName.end()) {
             auto edge = std::make_pair(itEdge1->second, itEdge2->second);
-          logger.log(repast::DEBUG, "Storing edge " + std::to_string(itEdge1->second) + "-" +std::to_string(itEdge2->second) + " on tick "+std::to_string(tick));
+            logger.log(repast::DEBUG, "Storing edge " + std::to_string(itEdge1->second) + "-" +std::to_string(itEdge2->second) + " on tick "+std::to_string(tick));
             edgeCounter++;
             if (it != networkEvolutionMap.end()) {
                 auto edges = it->second;
@@ -432,28 +497,6 @@ void KnowledgeSpreadModel::setupSocialNetwork() {
     totalEdges = edgeCounter;
     edgesIn.close();
 
-    // Step 3: Plan conferences atendees ahead of time
-    logger.log(repast::DEBUG,
-               "Planning conferences for rank " + std::to_string(rank) + "...");
-    std::mt19937 gen(CONFERENCE_GENERATOR_SEED);
-    for (int tick = 0; tick < totalTicks_; tick++) {
-        std::set<int> candidates = {};
-        for (const auto& agentInfo : agentsBasicInfo) {
-            if (agentInfo.second < tick) {
-                candidates.insert(agentInfo.first);
-            }
-        }
-        std::set<int> selectedAttendees;
-        if (!candidates.empty()) {
-            std::vector<int> candidatesVec(candidates.begin(), candidates.end());
-            std::shuffle(candidatesVec.begin(), candidatesVec.end(), gen);
-            int numToSelect = std::min((int)candidatesVec.size(), CONFERENCE_SIZE);
-            for (int k = 0; k < numToSelect; ++k) {
-                selectedAttendees.insert(candidatesVec[k]);
-            }
-        }
-        conferenceAtendees[tick] = selectedAttendees;
-    }
     LOG_RANK0(logger, repast::DEBUG, "Social Network successfully set up");
 }
 
@@ -568,11 +611,13 @@ void KnowledgeSpreadModel::step() {
             if (agent->getBirth() > currentTick) {
                 continue;
             }
-            std::vector<double> currentLoc;
-            knowledgeContinuousSpace->getLocation(agent->getId(), currentLoc);
+            std::vector<double> currentLoc = agent->getPosition();
             std::vector<double> targetLoc = getSocialLoc(agent, currentLoc);
-            agent->applyMovement(currentLoc, targetLoc, distThreshold_, regionLayer,
-                                 knowledgeContinuousSpace, knowledgeDiscreteSpace);
+            agent->applyMovement(targetLoc, currentTick, distThreshold_, regionLayer);
+
+            currentLoc = agent->getPosition();
+            targetLoc = getCloseLoc(agent, currentLoc);
+            agent->applyMovement(targetLoc, currentTick, distThreshold_, regionLayer);
         }
     }
     if (runCentroid_) {
@@ -580,73 +625,14 @@ void KnowledgeSpreadModel::step() {
             if (agent->getBirth() > currentTick) {
                 continue;
             }
-            std::vector<double> currentLoc;
-            knowledgeContinuousSpace->getLocation(agent->getId(), currentLoc);
+            std::vector<double> currentLoc = agent->getPosition();
             std::vector<double> targetLoc = getCentroidLoc(currentLoc);
-            agent->applyMovement(currentLoc, targetLoc, distThreshold_, regionLayer,
-                                 knowledgeContinuousSpace, knowledgeDiscreteSpace);
-        }
-    }
-    if (runConferences_) {
-        std::set<int> atendeesIds = conferenceAtendees[currentTick];
-        double sumX = 0, sumY = 0;
-        std::vector<KnowledgeAgent*> allAgents = localAgents;
-        allAgents.insert(allAgents.end(), nonLocalAgents.begin(),
-                         nonLocalAgents.end());
-        for (KnowledgeAgent* agent : allAgents) {
-            if (atendeesIds.count(agent->getId().id()) == 0)
-                continue;
-            agent->setIsConferencing(true);
-            std::vector<double> loc;
-            knowledgeContinuousSpace->getLocation(agent->getId(), loc);
-            sumX += loc[0];
-            sumY += loc[1];
-        }
-        std::vector<double> conferenceLoc = {sumX / atendeesIds.size(),
-                                             sumY / atendeesIds.size()};
-
-        for (KnowledgeAgent* agent : localAgents) {
-            if (agent->getBirth() > currentTick || !agent->isConferencing()) {
-                continue;
-            }
-            std::vector<double> currentLoc;
-            knowledgeContinuousSpace->getLocation(agent->getId(), currentLoc);
-            agent->applyMovement(currentLoc, conferenceLoc, distThreshold_,
-                                 regionLayer, knowledgeContinuousSpace,
-                                 knowledgeDiscreteSpace);
-            agent->setIsConferencing(false);
-        }
-    }
-    if (runClose_) {
-        for (KnowledgeAgent* agent : localAgents) {
-            if (agent->getBirth() > currentTick) {
-                continue;
-            }
-            std::vector<double> currentLoc;
-            knowledgeContinuousSpace->getLocation(agent->getId(), currentLoc);
-            std::vector<double> targetLoc = getCloseLoc(agent, currentLoc);
-            agent->applyMovement(currentLoc, targetLoc, distThreshold_, regionLayer,
-                                 knowledgeContinuousSpace, knowledgeDiscreteSpace);
-        }
-    }
-    if (runGravity_) {
-        for (KnowledgeAgent* agent : localAgents) {
-            if (agent->getBirth() > currentTick) {
-                continue;
-            }
-            std::vector<double> currentLoc;
-            knowledgeContinuousSpace->getLocation(agent->getId(), currentLoc);
-            std::vector<double> targetLoc = getGravityLoc(currentLoc);
-            agent->applyMovement(currentLoc, targetLoc, distThreshold_, regionLayer,
-                                 knowledgeContinuousSpace, knowledgeDiscreteSpace);
+            agent->applyMovement(targetLoc, currentTick, distThreshold_, regionLayer);
         }
     }
     logger.log(repast::DEBUG, "Applied all movements");
 
-    // Phase 2: Block-synchronize boundary ghost agents across MPI processes
-    knowledgeDiscreteSpace->balance();
-    logger.log(repast::DEBUG, "Marti");
-    // NOT needed: knowledgeContinuousSpace->balance();
+    // Phase 2: Synchronize ghost agents across MPI processes
     repast::RepastProcess::instance()
         ->synchronizeAgentStatus<KnowledgeAgent, KnowledgeAgentPackage,
                                  KnowledgeAgentPackageProvider,
@@ -661,11 +647,6 @@ void KnowledgeSpreadModel::step() {
 
     // Step 2.1: compute needed agents
     int worldSize = repast::RepastProcess::instance()->worldSize();
-    if (runConferences_) {
-        for (auto id : conferenceAtendees[currentTick + 1]) {
-            requiredAgentIds.insert(repast::AgentId(id, id % worldSize, 0));
-        }
-    }
     for (KnowledgeAgent* agent : localAgents) {
         std::vector<KnowledgeAgent*> neighbours = selectAdjacentsByDegree(
             agent, socialNetwork, NETWORK_NEIGHBOUR_MAX_DEGREE);
@@ -698,6 +679,7 @@ void KnowledgeSpreadModel::step() {
                 context, request, *provider, *receiver, *receiver);
     }
 
+    // Step 2.4: remove no longer needed ghosts from context
     std::vector<repast::AgentId> cancellations = request.cancellations();
     std::vector<repast::AgentId>::iterator idToRemove = cancellations.begin();
     while (idToRemove != cancellations.end()) {
@@ -733,8 +715,7 @@ KnowledgeSpreadModel::getSocialLoc(KnowledgeAgent* agent,
                               ->createUniIntGenerator(0, neighbours.size() - 1)
                               .next();
         KnowledgeAgent* target = neighbours[randomIndex];
-        std::vector<double> targetLoc;
-        knowledgeContinuousSpace->getLocation(target->getId(), targetLoc);
+        std::vector<double> targetLoc = target->getPosition();
         return targetLoc;
     }
     return currentLoc;
@@ -752,70 +733,44 @@ KnowledgeSpreadModel::getCentroidLoc(std::vector<double> currentLoc) {
 std::vector<double>
 KnowledgeSpreadModel::getCloseLoc(KnowledgeAgent* agent,
                                   std::vector<double> currentLoc) {
-    // Agents learn from the closest agent in the semantic layer
-    double minDist = distThreshold_;
-    std::vector<double> closestLoc = {currentLoc[0], currentLoc[1]};
-    std::vector<int> currentDiscreteLoc = discretizeVec2(currentLoc);
+    // Agents learn from a close agent in the semantic layer
 
-    // Find the agents within a radius based on disance threshold
-    std::vector<KnowledgeAgent*> closeAgents;
-    repast::Moore2DGridQuery<KnowledgeAgent>* query =
-        new repast::Moore2DGridQuery<KnowledgeAgent>(knowledgeDiscreteSpace);
-    query->query(currentDiscreteLoc, bufferSize, true, closeAgents);
-    delete query;
+    // Iterate over all agents independent of LOCAL or NON_LOCAL and find the closest one within the distance threshold
+    std::vector<KnowledgeAgent*> localAgents;
+    context.selectAgents(repast::SharedContext<KnowledgeAgent>::LOCAL,
+                          context.size(), localAgents);
+    std::vector<KnowledgeAgent*> nonLocalAgents;
+    context.selectAgents(repast::SharedContext<KnowledgeAgent>::NON_LOCAL,
+                          context.size(), nonLocalAgents);
+    std::vector<KnowledgeAgent*> allAgents;
+    allAgents.insert(allAgents.end(), localAgents.begin(), localAgents.end());
+    allAgents.insert(allAgents.end(), nonLocalAgents.begin(), nonLocalAgents.end());
 
-    for (KnowledgeAgent* closeAgent : closeAgents) {
-        std::vector<double> closeLoc;
-        knowledgeContinuousSpace->getLocation(closeAgent->getId(), closeLoc);
-        double dist = std::sqrt(std::pow(currentLoc[0] - closeLoc[0], 2) +
-                                std::pow(currentLoc[1] - closeLoc[1], 2));
-
-        if (dist < minDist) {
-            minDist = dist;
-            closestLoc = closeLoc;
+    // Filter agents that are within the distance threshold and are already born, and put them in a cache to randomly select from
+    std::vector<KnowledgeAgent*> neighbours;
+    for (KnowledgeAgent* other : allAgents) {
+        if (other->getId() == agent->getId() || other->getBirth() > repast::RepastProcess::instance()->getScheduleRunner().currentTick()) {
+            continue;
+        }
+        double distance = sqrt(distSq(currentLoc, other->getPosition()));
+        if (distance < distThreshold_) {
+            neighbours.push_back(other);
         }
     }
-    return closestLoc;
-}
-
-std::vector<double>
-KnowledgeSpreadModel::getGravityLoc(std::vector<double> currentLoc) {
-    // Agents move toward the most popular spot in their radius
-    std::vector<int> discreteLoc = discretizeVec2(currentLoc);
-
-    // Sample 8 surrounding grid coordinates at a distance of 1
-    std::vector<std::vector<int>> samplePoints;
-    samplePoints.push_back({discreteLoc[0] + GRAVITY_SAMPLE_RADIUS, discreteLoc[1]});
-    samplePoints.push_back({discreteLoc[0] - GRAVITY_SAMPLE_RADIUS, discreteLoc[1]});
-    samplePoints.push_back({discreteLoc[0], discreteLoc[1] + GRAVITY_SAMPLE_RADIUS});
-    samplePoints.push_back({discreteLoc[0], discreteLoc[1] - GRAVITY_SAMPLE_RADIUS});
-    samplePoints.push_back({discreteLoc[0] + GRAVITY_SAMPLE_RADIUS,
-                            discreteLoc[1] + GRAVITY_SAMPLE_RADIUS});
-    samplePoints.push_back({discreteLoc[0] - GRAVITY_SAMPLE_RADIUS,
-                            discreteLoc[1] + GRAVITY_SAMPLE_RADIUS});
-    samplePoints.push_back({discreteLoc[0] + GRAVITY_SAMPLE_RADIUS,
-                            discreteLoc[1] - GRAVITY_SAMPLE_RADIUS});
-    samplePoints.push_back({discreteLoc[0] - GRAVITY_SAMPLE_RADIUS,
-                            discreteLoc[1] - GRAVITY_SAMPLE_RADIUS});
-
-    int maxPop = -1;
-    std::vector<double> bestTarget = {currentLoc[0], currentLoc[1]};
-
-    // Count agents near each sample point
-    std::vector<KnowledgeAgent*> closeAgents;
-    for (auto& point : samplePoints) {
-        closeAgents.clear();
-        repast::Moore2DGridQuery<KnowledgeAgent>* query =
-            new repast::Moore2DGridQuery<KnowledgeAgent>(knowledgeDiscreteSpace);
-        query->query(point, GRAVITY_POPULATION_RADIUS, true, closeAgents);
-        delete query;
-        int popCount = closeAgents.size();
-        if (popCount > maxPop) {
-            maxPop = popCount;
-            bestTarget = {(double)point[0], (double)point[1]};
-        }
+    if (neighbours.empty()) {
+        return currentLoc;
     }
-    return bestTarget;
+    
+    int randomIndex = repast::Random::instance()
+                          ->createUniIntGenerator(0, neighbours.size() - 1)
+                          .next();
+    KnowledgeAgent* target = neighbours[randomIndex];
+    std::vector<double> targetLoc = target->getPosition();
+
+    // logger.log(repast::DEBUG, "Agent " + std::to_string(agent->getId().id()) + " with current location (" + std::to_string(currentLoc[0]) + ", " + std::to_string(currentLoc[1]) +
+    //                               " found closest location ( " + std::to_string(closestLoc[0]) + ", " + std::to_string(closestLoc[1]) + " ) with distance " + std::to_string(minDist));
+
+    return targetLoc;
 }
 
 void KnowledgeSpreadModel::initSchedule(repast::ScheduleRunner& runner) {
@@ -827,12 +782,20 @@ void KnowledgeSpreadModel::initSchedule(repast::ScheduleRunner& runner) {
         0.5, 1,
         repast::Schedule::FunctorPtr(new repast::MethodFunctor<KnowledgeSpreadModel>(
             this, &KnowledgeSpreadModel::recordDynamicResults)));
+    runner.scheduleEvent(
+        0.5, 1,
+        repast::Schedule::FunctorPtr(new repast::MethodFunctor<KnowledgeSpreadModel>(
+            this, &KnowledgeSpreadModel::recordLocations)));
+    runner.scheduleEvent(
+        0.5, 1,
+        repast::Schedule::FunctorPtr(new repast::MethodFunctor<KnowledgeSpreadModel>(
+            this, &KnowledgeSpreadModel::recordNetwork)));
     runner.scheduleEndEvent(
         repast::Schedule::FunctorPtr(new repast::MethodFunctor<KnowledgeSpreadModel>(
             this, &KnowledgeSpreadModel::recordDynamicResults)));
-    runner.scheduleEndEvent(
-        repast::Schedule::FunctorPtr(new repast::MethodFunctor<KnowledgeSpreadModel>(
-            this, &KnowledgeSpreadModel::recordStaticResults)));
+    // runner.scheduleEndEvent(
+    //     repast::Schedule::FunctorPtr(new repast::MethodFunctor<KnowledgeSpreadModel>(
+    //         this, &KnowledgeSpreadModel::recordStaticResults)));
     runner.scheduleStop(totalTicks_);
 }
 
@@ -871,6 +834,106 @@ void KnowledgeSpreadModel::recordDynamicResults() {
 
     dynamic_dataset_->record();
     dynamic_dataset_->write();
+}
+
+void KnowledgeSpreadModel::recordLocations() {
+    int rank = repast::RepastProcess::instance()->rank();
+    int tick = repast::RepastProcess::instance()->getScheduleRunner().currentTick();
+    logger.log(repast::DEBUG, "Recording locations for rank " + std::to_string(rank));
+
+    if (tick == 0) {
+        // Write header to file
+        std::ofstream locationOut("./output/locations_" + std::to_string(rank) + ".csv");
+        if (locationOut.is_open()) {
+            locationOut << "tick,agent_id,x,y,color\n";
+            locationOut.close();
+        } else {
+            logger.log(repast::ERROR, "Unable to open file to write location data");
+            return;
+        }
+    }
+    // append to file each one of the agent's coordinate and color at the current tick
+    std::ofstream locationOut("./output/locations_" + std::to_string(rank) + ".csv", std::ios_base::app);
+    if (locationOut.is_open()) {
+        std::vector<KnowledgeAgent*> localAgents;
+        context.selectAgents(repast::SharedContext<KnowledgeAgent>::LOCAL,
+                              context.size(), localAgents);
+        for (KnowledgeAgent* agent : localAgents) {
+            std::vector<double> pos = agent->getPosition();
+            locationOut << tick << "," << agent->getId().id() << "," << pos[0] << "," << pos[1] << "," << agent->getColor() << "\n";
+        }
+        locationOut.close();
+    } else {
+        logger.log(repast::ERROR, "Unable to open file to write location data");
+    }
+}
+
+void KnowledgeSpreadModel::recordNetwork() {
+    // Writes a GML file for each tick and rank, containing all the edges present in that rank at that tick.
+    // Writes node positions and colors as node attributes.
+    int rank = repast::RepastProcess::instance()->rank();
+    int tick = repast::RepastProcess::instance()->getScheduleRunner().currentTick();
+
+    logger.log(repast::DEBUG, "Recording network for rank " + std::to_string(rank));
+    std::ofstream networkOut("./output/network_" + std::to_string(rank) + "_" + std::to_string(tick) + ".gml");
+    if (networkOut.is_open()) {
+        networkOut << "graph [\n";
+        // Write nodes with attributes
+        std::vector<KnowledgeAgent*> localAgents;
+        context.selectAgents(repast::SharedContext<KnowledgeAgent>::LOCAL,
+                              context.size(), localAgents);
+        std::vector<KnowledgeAgent*> nonLocalAgents;
+        context.selectAgents(repast::SharedContext<KnowledgeAgent>::NON_LOCAL,
+                              context.size(), nonLocalAgents);
+        std::vector<KnowledgeAgent*> allAgents = localAgents;
+        allAgents.insert(allAgents.end(), nonLocalAgents.begin(), nonLocalAgents.end());
+
+        std::set<std::pair<int, int>> writtenEdges; // To avoid duplicates in undirected graph
+        for (KnowledgeAgent* agent : allAgents) {
+            if (agent->getBirth() > tick) {
+                continue; // Agent not born yet
+            }
+            bool isGhost = false;
+            if (std::find(localAgents.begin(), localAgents.end(), agent) == localAgents.end()) {
+                isGhost = true;
+            }
+            std::vector<double> pos = agent->getPosition();
+            networkOut << "  node [\n";
+            networkOut << "    id " << agent->getId().id() << "\n";
+            networkOut << "    x " << pos[0] << "\n";
+            networkOut << "    y " << pos[1] << "\n";
+            networkOut << "    color " << agent->getColor() << "\n";
+            networkOut << "    isGhost " << isGhost << "\n";
+            networkOut << "  ]\n";
+
+            // Write edges
+            std::vector<KnowledgeAgent*> neighbours;
+            socialNetwork->adjacent(agent, neighbours);
+            for (KnowledgeAgent* neighbour : neighbours) {
+                if (writtenEdges.count({std::min(agent->getId().id(), neighbour->getId().id()),
+                                       std::max(agent->getId().id(), neighbour->getId().id())}) > 0) {
+                    continue; // Edge already written
+                }
+                if (neighbour->getBirth() > tick) {
+                    continue; // Neighbour not born yet
+                }
+                if (std::find(allAgents.begin(), allAgents.end(), neighbour) == allAgents.end()) {
+                    logger.log(repast::ERROR, "Neighbour agent with ID " + std::to_string(neighbour->getId().id()) + " not found in context for rank " + std::to_string(rank));
+                    continue; // Neighbour not in this rank's context (shouldn't happen due to synchronization, but just in case)
+                }
+                networkOut << "  edge [\n";
+                networkOut << "    source " << agent->getId().id() << "\n";
+                networkOut << "    target " << neighbour->getId().id() << "\n";
+                networkOut << "  ]\n";
+                writtenEdges.insert({std::min(agent->getId().id(), neighbour->getId().id()),
+                                     std::max(agent->getId().id(), neighbour->getId().id())});
+            }
+        }
+        networkOut << "]\n";
+        networkOut.close();
+    } else {
+        logger.log(repast::ERROR, "Unable to open file to write network data");
+    }
 }
 
 void KnowledgeSpreadModel::recordStaticResults() {

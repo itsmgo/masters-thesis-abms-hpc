@@ -2,9 +2,11 @@
 #define KNOWLEDGE_MODEL
 
 #include "KnowledgeAgent.h"
+#include "repast_hpc/Edge.h"
 #include "repast_hpc/Properties.h"
 #include "repast_hpc/SVDataSet.h"
 #include "repast_hpc/Schedule.h"
+#include "repast_hpc/SharedNetwork.h"
 #include "repast_hpc/TDataSource.h"
 
 #include <boost/mpi.hpp>
@@ -45,15 +47,6 @@ class KnowledgeSpreadModel {
         socialNetwork;
     std::map<int, std::vector<std::pair<int, int>>> networkEvolutionMap;
 
-    // epistemic layer: a 2D space where agents move between mental models
-    repast::SharedContinuousSpace<KnowledgeAgent, repast::StrictBorders,
-                                  repast::SimpleAdder<KnowledgeAgent>>*
-        knowledgeContinuousSpace;
-    repast::SharedDiscreteSpace<KnowledgeAgent, repast::StrictBorders,
-                                repast::SimpleAdder<KnowledgeAgent>>*
-        knowledgeDiscreteSpace;
-    int bufferSize;
-
     // stores regional population and color
     repast::DiscreteValueLayer<std::pair<Color, std::vector<double>>,
                                repast::StrictBorders>* regionLayer;
@@ -67,10 +60,6 @@ class KnowledgeSpreadModel {
     bool useSocialNetData_; // "preferential attachment" vs "data"
     bool runSocial_;
     bool runCentroid_;
-    bool runConferences_;
-    std::map<int, std::set<int>> conferenceAtendees;
-    bool runClose_;
-    bool runGravity_;
 
     KnowledgeAgentPackageProvider* provider;
     KnowledgeAgentPackageReceiver* receiver;
@@ -95,8 +84,6 @@ class KnowledgeSpreadModel {
     getCloseLoc(KnowledgeAgent* agent,
                 std::vector<double>
                     currentLoc); // Agents learn from nearest epistemic neighbor
-    std::vector<double> getGravityLoc(
-        std::vector<double> currentLoc); // Agents move to densely populated ideas
 
   public:
     KnowledgeSpreadModel(std::string propsFile, int argc, char** argv,
@@ -105,6 +92,8 @@ class KnowledgeSpreadModel {
     void initSchedule(repast::ScheduleRunner& runner);
     void step();
     void recordStaticResults();
+    void recordLocations();
+    void recordNetwork();
     void recordDynamicResults();
 
     // metrics

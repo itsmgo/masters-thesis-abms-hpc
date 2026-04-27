@@ -1,42 +1,34 @@
 #include "KnowledgeAgent.h"
 
-#include "repast_hpc/logger.h"
-
-#include <string>
 
 KnowledgeAgent::KnowledgeAgent(repast::AgentId id, double birth)
     : id_(id)
     , birth_(birth)
-    , isConferencing_(false)
+    , position_(false)
     , color_(Color::BLACK) {}
 
-KnowledgeAgent::KnowledgeAgent(repast::AgentId id, double birth, bool isConferencing,
-                               Color color)
+KnowledgeAgent::KnowledgeAgent(repast::AgentId id, double birth, std::vector<double> position, Color color)
     : id_(id)
     , birth_(birth)
-    , isConferencing_(isConferencing)
+    , position_(position)
     , color_(color) {}
 
 KnowledgeAgent::~KnowledgeAgent() {}
 
 void KnowledgeAgent::applyMovement(
-    std::vector<double> currentLoc, std::vector<double> targetLoc,
-    double distThreshold,
+    std::vector<double> targetLoc, int currentTick, double distThreshold,
     repast::DiscreteValueLayer<std::pair<Color, std::vector<double>>,
-                               repast::StrictBorders>* regionLayer,
-    repast::SharedContinuousSpace<KnowledgeAgent, repast::StrictBorders,
-                                  repast::SimpleAdder<KnowledgeAgent>>*
-        continuousSpace,
-    repast::SharedDiscreteSpace<KnowledgeAgent, repast::StrictBorders,
-                                repast::SimpleAdder<KnowledgeAgent>>*
-        discreteSpace) {
-    double dx = targetLoc[0] - currentLoc[0];
-    double dy = targetLoc[1] - currentLoc[1];
+                               repast::StrictBorders>* regionLayer) {
+    double dx = targetLoc[0] - position_[0];
+    double dy = targetLoc[1] - position_[1];
+
+    double age = std::max(1.0, birth_ - currentTick);
+
     double dist = std::sqrt(dx * dx + dy * dy);
 
     if (dist > 0 && dist < distThreshold) {
         // Logistic function of age and distance
-        double stepSize = 1.0 / (1.0 + std::exp(-birth_ * dist));
+        double stepSize = 2.0 / (1.0 + std::exp(- dist / age) - 1.0);
         // Move 1 unit per tick at most
         stepSize = std::min(1.0, stepSize);
         // Prevent overshooting the specific target
@@ -45,8 +37,8 @@ void KnowledgeAgent::applyMovement(
 
         double deltaX = (dx / dist) * stepSize;
         double deltaY = (dy / dist) * stepSize;
-        std::vector<double> newLocation = {currentLoc[0] + deltaX,
-                                           currentLoc[1] + deltaY};
+        std::vector<double> newLocation = {position_[0] + deltaX,
+                                           position_[1] + deltaY};
         std::vector<int> newDiscreteLoc = discretizeVec2(newLocation);
         Color nextColor = regionLayer->get(newDiscreteLoc).first;
 
@@ -56,8 +48,7 @@ void KnowledgeAgent::applyMovement(
         }
 
         // Apply movement and color changes
-        continuousSpace->moveTo(id_, newLocation);
-        discreteSpace->moveTo(id_, discretizeVec2(newLocation));
+        position_ = newLocation;
         color_ = nextColor;
     }
 }
@@ -69,12 +60,12 @@ void KnowledgeAgent::provideContent(KnowledgeAgentPackage& package) {
     package.currentRank = id_.currentRank();
 
     package.birth = birth_;
-    package.isConferencing = isConferencing_;
+    package.position = position_;
     package.color = color_;
 }
 
 void KnowledgeAgent::update(KnowledgeAgentPackage& package) {
     birth_ = package.birth;
-    isConferencing_ = package.isConferencing;
+    position_ = package.position;
     color_ = package.color;
 }

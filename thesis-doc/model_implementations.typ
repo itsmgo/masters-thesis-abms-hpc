@@ -2,7 +2,9 @@
 
 The core objective of the upcoming third chapter of this Master's thesis is the adaptation and implementation of the aforementioned social network models onto the Repast HPC platform. Transitioning the models from a single-threaded, high-level, interpreted environment like NetLogo into a highly distributed, compiled C++ and MPI-based framework requires profound architectural shifts and a deep understanding of parallel computing paradigms. The implementations must carefully map the conceptual socio-cognitive components of the ABM's to Repast HPC's strict distributed memory architecture.   
 
-== Parallelizing the misinformation diffusion model
+== Misinformation diffusion model
+
+=== Parallelizing the model
 
 Translating the extended SBFC model from its original NetLogo format into Repast HPC demands a fundamental shift in programming paradigms. While NetLogo relies on an interpreted, single-threaded execution loop that evaluates agents sequentially or in randomized batches, Repast HPC utilizes a compiled, distributed-memory C++ architecture built on top of the Message Passing Interface (MPI).  
 
@@ -50,9 +52,59 @@ The implementation will utilize Repast HPC's default `GhostMode` synchronization
   placement: auto,
 ) <MisinformationRepast>
 
+=== Validating the Repast HPC implementation
+
+In order to validate the correctness of the Repast HPC implementation of the misinformation diffusion model, a rigorous validation procedure must be established. The original NetLogo model's behavior is well-documented, with specific emergent phenomena such as the formation of echo chambers, the critical thresholds for misinformation cascades, and the temporal dynamics of belief adoption. The Repast HPC implementation must be subjected to a battery of tests to ensure that it faithfully reproduces these key behaviors under identical initial conditions. This involves:
++ Running the Repast HPC model with the same initial network topology and agent class distributions as the original NetLogo model.
++ Comparing the time series data of belief state distributions (S, B, FC) across both implementations to ensure they match within acceptable statistical variance.
++ Sampling across multiple random seeds to confirm that the stochastic dynamics are consistent and that the same emergent patterns arise in both implementations.
++ Performing sensitivity analyses on the key parameters (e.g., $alpha$ hoax credibility, $beta$ spreading rate) to confirm that the Repast HPC model responds to parameter changes in the same manner as the NetLogo model.
+
+To guarantee the integrity of the validation process, the same network topology is used in both scenarios, and a systematic sweep of the parameter space will be conducted, as outlined in @MisinformationSweeps. This table defines the specific parameter combinations that will be tested to ensure that the Repast HPC implementation captures the full range of behaviors exhibited by the original model.
+
+#figure(
+  table(
+    columns: (auto, auto, auto, auto, auto, auto, auto),
+    inset: (x: 8pt),
+    align: (x, y) => if x == 0 { right } else { left },
+    stroke: (x, y) => if y == 0 or y == 3 {
+      (right: none, top: none, bottom: 0.5pt, left: none)
+    } else { none },
+    table.header(
+      [*Parameter Set*], [*Samples*], [*$alpha$*], [*$beta$*], [*$B_0$*], [*$p_"verify_influencer"$*], [*$p_"verify_scholar"$*]
+    ),
+    [*1*], [10], [0.8], [0.5], [10], [0.2], [0.3],
+    [*2*], [10], [0.4], [0.2], [50], [0.2], [0.3],
+    [*3*], [10], [0.5], [0.8], [90], [0.1], [0.2],
+  ),
+  caption: "Parameter sweeps for validating the Repast HPC implementation of the misinformation diffusion model",
+) <MisinformationSweeps>
+
+In figures @MisinformationValidation1, @MisinformationValidation2 and @MisinformationValidation3, the results of the validation process are visualized. The time series plots compare the belief state distributions over time for both the NetLogo and Repast HPC implementations under identical initial conditions and parameter settings. The close alignment of the curves across multiple runs confirms that the Repast HPC implementation accurately reproduces the emergent dynamics of the original model.
+
+#figure(
+    image("../misinformation-diffusion-repast-hpc/figures/alpha0.8_beta0.5_believers10.png", width: 70%),
+    caption: [Validation of the Repast HPC implementation for parameter set 1],
+    placement: auto,
+  ) <MisinformationValidation1>
+#figure(
+    image("../misinformation-diffusion-repast-hpc/figures/alpha0.4_beta0.2_believers50.png", width: 70%),
+    caption: [Validation of the Repast HPC implementation for parameter set 2],
+    placement: auto,
+  ) <MisinformationValidation2>
+#figure(
+    image("../misinformation-diffusion-repast-hpc/figures/alpha0.5_beta0.8_believers90.png", width: 70%),
+    caption: [Validation of the Repast HPC implementation for parameter set 3],
+    placement: auto,
+  ) <MisinformationValidation3>
+
+The difference that can be observed in @MisinformationValidation1, @MisinformationValidation2 and @MisinformationValidation3, plots can be attributed to the difference on the scholar community used for each simulation, as the original NetLogo model and the Repast HPC implementation used two different Fluid Communities algorithms to detect communities in the Facebook network, and the final results are not exactly the same. However, the overall dynamics of the belief state distributions are consistent across both implementations, confirming that the core mechanisms of misinformation diffusion are preserved in the Repast HPC version.
+
 #pagebreak()
 
-== Parallelizing the socio-epistemic knowledge spread model
+== Socio-epistemic knowledge spread model
+
+=== Parallelizing the model
 
 Translating the socio-epistemic _"Opinion Dynamics of Science"_ model from its native NetLogo environment to Repast HPC introduces architectural complexities fundamentally different from the misinformation diffusion model. While both rely on network topologies, the socio-epistemic model operates within a highly coupled dual-layer environment: agents traverse a continuous spatial lattice representing abstract mental models (the epistemic layer) while simultaneously evaluating connections across a multi-layered graph (the social layer).
 
@@ -96,7 +148,82 @@ Because an agent A near the boundary of node 1's spatial partition might need to
 
 The dual-layer nature of the model creates a severe parallelization conflict: two agents perfectly adjacent in the social network might reside on entirely opposite sides of the epistemic spatial grid, and therefore on completely different compute nodes. If agent A on node 1 needs to evaluate its co-author agent B on node 3 for the Social movement force, node 1 requires a network-based ghost of agent B, independent of the spatial buffer zone.
 
-To maintain coherence across both projections, the Repast HPC simulation must execute a complex, two-tiered synchronization at the beginning of every tick. The implementation defines a `ScientistPackage`: a lightweight C++ struct containing only the mutable properties of the agent.
+To maintain coherence across both projections, the Repast HPC simulation must execute a complex, two-tiered synchronization at the beginning of every tick. The implementation defines a `KnowledgeAgentPackage`: a lightweight C++ struct containing only the mutable properties of the agent.
 
 During synchronization, the system first updates the status of all ghost agents across the network edges, ensuring topological consistency. Immediately following, it synchronizes the spatial buffer zones to ensure geographic consistency. Only after both synchronization barriers are cleared can the scheduler safely iterate over the local agents to calculate the logistic speed function and execute the movement algorithms.
 
+== Modifications to the original model
+
+The Repast HPC implementation of the socio-epistemic model necessitated several modifications to the original NetLogo design to accommodate the constraints and capabilities of a distributed-memory architecture. The most significant changes include:
+
+- *Removal of the conference force*: The original NetLogo model included a conference force that temporarily aggregated agents into a single point in the epistemic space during conference events. This mechanism was designed to simulate the intense intellectual exchange that occurs during academic conferences. However, implementing this force in a distributed environment proved to be infeasible due to the need for global synchronization and the potential for significant communication overhead. As a result, the conference force was removed from the Repast HPC implementation.
+
+- *Modification of the speed function*: The original model used a logistic function to determine the speed of agent movement based on their birth and distance to the target point. In the Repast HPC implementation, this function was corrected to ensure that the speed decreases with agent age and increases with distance, as originally intended. The corrected function is defined as:
+
+$ "speed" = 2/(1 + e^(-("dist"/"age"))) - 1 $
+
+- *Removal of the gravity force*: The gravity force in the original model caused agents to be attracted to areas of higher agent density in the epistemic space, simulating the tendency of scientists to cluster around popular research topics. However, this force required agents to evaluate the positions of all other agents within a certain radius, which is computationally expensive and difficult to manage in a distributed environment. Therefore, the gravity force was also removed from the Repast HPC implementation.
+
+== Validating the Repast HPC implementation
+
+To validate the correctness of the Repast HPC implementation of the socio-epistemic model, a comprehensive validation procedure was established. The original NetLogo model exhibited specific emergent phenomena, such as the clustering of agents in the epistemic space. The Repast HPC implementation was subjected to a series of tests to ensure that it faithfully reproduced these key behaviors under identical initial conditions. The validation process involved:
++ Running the Repast HPC model with the same initial network topology, agent distributions and epistemic space landscape as the original NetLogo model.
++ Comparing the time series data of the share of agents in each epistemic space cluster.
++ Sampling across multiple random seeds to confirm that the stochastic dynamics are consistent and that the same emergent patterns arise in both implementations.
++ Performing sensitivity analyses on the key parameters (e.g., influence of social forces, influence of centroid forces) to confirm that the Repast HPC model responds to parameter changes in the same manner as the NetLogo model.
+
+The first step to guarantee a fair comparison between the two implementations is to use the same epistemic landscape in both scenarios. To do that, instead of leaving the cluster generation process to the randomness of each random number generator, the same cluster centers and standard deviations are defined in both implementations, ensuring that the initial conditions of the epistemic space are identical. Figure @SocioEpistemicLandscape depicts the initial epistemic landscape used for the validation process, with the same cluster centers and standard deviations defined in both implementations.
+
+#figure(
+  image("../knowledge-spread-repast-hpc/figures/epistemic_space.png", width: 75%),
+  caption: [Initial epistemic landscape used for the validation process], 
+  placement: auto,
+) <SocioEpistemicLandscape>
+
+The parameters used for the validation sweeps are defined in @SocioEpistemicSweeps. This table outlines the specific parameter combinations that were tested to ensure that the Repast HPC implementation captures the full range of behaviors exhibited by the original model.
+
+#figure(
+  table(
+    columns: (auto, auto, auto, auto),
+    inset: (x: 8pt),
+    align: (x, y) => if x == 0 { right } else { left },
+    stroke: (x, y) => if y == 0 or y == 3 {
+      (right: none, top: none, bottom: 0.5pt, left: none)
+    } else { none },
+    table.header([*Parameter Set*], [*Samples*], [*Social forces*], [*Centroid forces*]),
+    [*1*], [5], [`true`], [`false`],
+    [*2*], [10], [`true`], [`true`],
+    [*3*], [5], [`false`], [`true`],
+  ),
+  caption: "Parameter sweeps for validating the Repast HPC implementation of the socio-epistemic model",
+) <SocioEpistemicSweeps>
+
+In figures @SocioEpistemicValidation1, @SocioEpistemicValidation2 and @SocioEpistemicValidation3, the results of the validation process are visualized. The time series plots compare the share of agents in each epistemic cluster over time for both the NetLogo and Repast HPC implementations under identical initial conditions and parameter settings. The close alignment of the curves across multiple runs confirms that the Repast HPC implementation accurately reproduces the emergent dynamics of the original model.
+
+#figure(
+  image("../knowledge-spread-repast-hpc/figures/epistemic_share_social1_centroid0.png", width: 75%),
+  caption: [Validation of the Repast HPC implementation for parameter set 1],
+  placement: auto,
+) <SocioEpistemicValidation1>
+#figure(
+  image("../knowledge-spread-repast-hpc/figures/epistemic_share_social1_centroid1.png", width: 75%),
+  caption: [Validation of the Repast HPC implementation for parameter set 2],
+  placement: auto,
+) <SocioEpistemicValidation2>
+#figure(
+  image("../knowledge-spread-repast-hpc/figures/epistemic_share_social0_centroid1.png", width: 75%),
+  caption: [Validation of the Repast HPC implementation for parameter set 3],
+  placement: auto,
+) <SocioEpistemicValidation3>
+
+Also, the trajectory of the agents in the Repast HPC implementation is shown in @SocioEpistemicTrajectory. The plot shows the movement of agents in the epistemic space over time, with different colors representing different clusters. The trajectories confirm that the agents are clustering around the same epistemic regions, further validating the correctness of the Repast HPC version.
+
+#figure(
+  image("../knowledge-spread-repast-hpc/figures/trajectories_1_1.png", width: 75%),
+  caption: [Trajectory of agents in the epistemic space over time in the Repast HPC implementation with parameter set 2], 
+  placement: auto,
+) <SocioEpistemicTrajectory>
+
+== Implementation code availability
+
+The complete source code for the Repast HPC implementations of both the misinformation diffusion model and the socio-epistemic knowledge spread model is available in a public GitHub repository. The repository includes detailed documentation, instructions for building and running the simulations, and scripts for reproducing the validation results presented in this chapter. The code is licensed under the MIT License, allowing for free use, modification, and distribution with proper attribution. The repository can be accessed at the following URL: #link("https://github.com/itsmgo/masters-thesis-abms-hpc", [#underline("https://github.com/itsmgo/masters-thesis-abms-hpc")])

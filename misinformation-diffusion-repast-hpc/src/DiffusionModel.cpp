@@ -234,7 +234,7 @@ void MisinformationDiffusionModel::initNetwork() {
 
     // Calculate exact target counts based on global network size
     int target_influencers = total_nodes * INFLUENCER_PERCENTAGE / 100.0;
-    int target_bots = total_nodes * bot_p_ / 100.0;
+    int target_bots = total_nodes * bot_p_;
 
     // Separate non-scholar nodes
     std::vector<int> non_scholar_nodes;
@@ -303,7 +303,7 @@ void MisinformationDiffusionModel::initNetwork() {
                     if (rand_val < bot_p_believer_ / bot_p_) {
                         agent_state = BeliefState::BELIEVER;
                     } else {
-                        agent_state = BeliefState::SUSCEPTIBLE;
+                        agent_state = BeliefState::FACT_CHECKER;
                     }
                 } else {
                     p_verify = normal_p_verify_;
@@ -448,9 +448,9 @@ void MisinformationDiffusionModel::initSchedule(repast::ScheduleRunner& runner) 
     runner.scheduleEndEvent(repast::Schedule::FunctorPtr(
         new repast::MethodFunctor<MisinformationDiffusionModel>(
             this, &MisinformationDiffusionModel::recordDynamicResults)));
-    runner.scheduleEndEvent(repast::Schedule::FunctorPtr(
-        new repast::MethodFunctor<MisinformationDiffusionModel>(
-            this, &MisinformationDiffusionModel::recordStaticResults)));
+    // runner.scheduleEndEvent(repast::Schedule::FunctorPtr(
+    //     new repast::MethodFunctor<MisinformationDiffusionModel>(
+    //         this, &MisinformationDiffusionModel::recordStaticResults)));
     runner.scheduleStop(total_ticks_);
 }
 

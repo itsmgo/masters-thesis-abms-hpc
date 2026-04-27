@@ -1,5 +1,5 @@
 #v(20pt)
-#align(center, title("PAC2: Design and architecture"))
+#align(center, title("PAC3: Implementation"))
 #v(50pt)
 #align(center, text(22pt, "Performance analysis of social network models in agent based systems"))
 
