@@ -7,7 +7,7 @@ plt.style.use('ggplot')
 
 if __name__ == "__main__":
     argument_parser = argparse.ArgumentParser(description='Analyze dynamic graph results')
-    argument_parser.add_argument('--input', type=str, default='output/dynamic_results.csv',
+    argument_parser.add_argument('--input', type=str, default='output/validation/dynamic_results.csv',
                                     help='Path to the CSV file containing dynamic graph results')
     args = argument_parser.parse_args()
 
