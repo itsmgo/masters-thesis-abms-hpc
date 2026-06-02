@@ -2,6 +2,7 @@
 repast-hpc-tutorial
 literature
 venv
+__pycache__
 
 # misinformation diffusion model
 misinformation-diffusion-repast-hpc/bin
@@ -10,6 +11,8 @@ misinformation-diffusion-repast-hpc/objects
 misinformation-diffusion-repast-hpc/.cache
 misinformation-diffusion-repast-hpc/.env
 misinformation-diffusion-repast-hpc/compile_commands.json
+misinformation-diffusion-repast-hpc/output/tau
+misinformation-diffusion-repast-hpc/props/networks
 
 # knowledge spread model
 knowledge-spread-repast-hpc/bin

@@ -70,9 +70,13 @@
 
 #include "model_implementations.typ"
 
+#include "performance_analysis.typ"
+
 #set page(margin: 0.85in)
 #set text(size: 10pt)
 #set heading(numbering: none)
 #show heading: it => pagebreak() + block(it.body, height: 2em)
+
+#include "conclusions.typ"
 
 #bibliography("references.bib")

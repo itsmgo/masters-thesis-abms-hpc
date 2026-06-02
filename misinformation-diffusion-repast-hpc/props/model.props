@@ -1,5 +1,6 @@
 #Properties file
 network_file = ./props/network.gml
+partitioning_strat = node_community_modulo
 total_ticks = 168
 alpha_hoax_credibility = 0.5
 beta_spreading_rate = 0.8
@@ -10,6 +11,8 @@ normal_p_verify = 0.02
 normal_p_forget = 0.1
 scholar_p_verify = 0.3
 scholar_p_forget = 0.07
-scholars_community = 7
+scholars_community = 0
+extra_compute_cycles = 0
+extra_message_bytes = 0
 bot_p_fact_checker = 0.05
 bot_p_believer = 0.05

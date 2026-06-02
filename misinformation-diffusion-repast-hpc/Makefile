@@ -25,3 +25,11 @@ build: clean_compiled_files
 	$(MPICXX) $(REPAST_HPC_DEFINES) $(BOOST_INCLUDE) $(REPAST_HPC_INCLUDE) -I./include -c ./src/DiffusionModel.cpp -o ./objects/DiffusionModel.o
 	$(MPICXX) $(REPAST_HPC_DEFINES) $(BOOST_INCLUDE) $(REPAST_HPC_INCLUDE) -I./include -c ./src/DiffusionAgent.cpp -o ./objects/DiffusionAgent.o
 	$(MPICXX) $(BOOST_LIB_DIR) $(REPAST_HPC_LIB_DIR) -o ./bin/misinformation  ./objects/main.o ./objects/DiffusionModel.o ./objects/DiffusionAgent.o $(REPAST_HPC_LIB) $(BOOST_LIBS)
+
+.PHONY: build_tau
+build_tau: clean_compiled_files
+	export TAU_MAKEFILE=$(TAU_MAKEFILE); \
+	$(TAUCXX) $(REPAST_HPC_DEFINES) $(BOOST_INCLUDE) $(REPAST_HPC_INCLUDE) -g -I./include -c ./src/main.cpp -o ./objects/main.o
+	$(TAUCXX) $(REPAST_HPC_DEFINES) $(BOOST_INCLUDE) $(REPAST_HPC_INCLUDE) -g -I./include -c ./src/DiffusionModel.cpp -o ./objects/DiffusionModel.o
+	$(TAUCXX) $(REPAST_HPC_DEFINES) $(BOOST_INCLUDE) $(REPAST_HPC_INCLUDE) -g -I./include -c ./src/DiffusionAgent.cpp -o ./objects/DiffusionAgent.o
+	$(TAUCXX) $(BOOST_LIB_DIR) $(REPAST_HPC_LIB_DIR) -g -no-pie -o ./bin/misinformation  ./objects/main.o ./objects/DiffusionModel.o ./objects/DiffusionAgent.o $(REPAST_HPC_LIB) $(BOOST_LIBS)

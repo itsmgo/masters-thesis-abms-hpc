@@ -4,6 +4,7 @@
 #include "repast_hpc/AgentId.h"
 #include "repast_hpc/SharedContext.h"
 #include "repast_hpc/SharedNetwork.h"
+#include <vector>
 
 #define LOG_RANK0(logger, level, message)                                           \
     do {                                                                            \
@@ -20,6 +21,8 @@ struct DiffusionAgentPackage {
     int rank;
     int type;
     int currentRank;
+    int extraMessageBytes;
+    std::vector<int> extraMessageBuffer; // This is just to increase the size of the package for simulation purposes
 
     int agentClass;
     int state;
@@ -28,13 +31,16 @@ struct DiffusionAgentPackage {
     DiffusionAgentPackage() {}
 
     DiffusionAgentPackage(int _id, int _rank, int _type, int _currentRank,
-                          int _agentClass, int _state)
+                          int _agentClass, int _state, int _extraMessageBytes,
+                          std::vector<int> _extraMessageBuffer)
         : id(_id)
         , rank(_rank)
         , type(_type)
         , currentRank(_currentRank)
         , agentClass(_agentClass)
-        , state(_state) {}
+        , state(_state)
+        , extraMessageBytes(_extraMessageBytes)
+        , extraMessageBuffer(_extraMessageBuffer) {}
 
     // Boost serialization template mapping variables for MPI transfer
     template <class Archive>
@@ -45,6 +51,8 @@ struct DiffusionAgentPackage {
         ar& currentRank;
         ar& agentClass;
         ar& state;
+        ar& extraMessageBytes;
+        ar& extraMessageBuffer;
     }
 };
 
@@ -59,16 +67,19 @@ class DiffusionAgent {
     double p_verify_;
     double p_forget_;
 
+    int extra_message_bytes_; // This is just to simulate larger package sizes and message serialization overhead
+
     repast::Logger logger = repast::Log4CL::instance()->get_logger("root");
 
   public:
     DiffusionAgent(repast::AgentId id, AgentClass type, double p_verify,
-                   double p_forget, BeliefState initial_state)
+                   double p_forget, BeliefState initial_state, int extra_message_bytes)
         : id_(id)
         , type_(type)
         , p_verify_(p_verify)
         , p_forget_(p_forget)
-        , state_(initial_state) {}
+        , state_(initial_state)
+        , extra_message_bytes_(extra_message_bytes) {}
 
     ~DiffusionAgent() {}
 
@@ -87,7 +98,7 @@ class DiffusionAgent {
                               repast::RepastEdgeContent<DiffusionAgent>,
                               repast::RepastEdgeContentManager<DiffusionAgent>>*
             network,
-        double alpha, double beta);
+        double alpha, double beta, int extra_compute_cycles);
     void applyNextState();
 
     /* Package Actions */

@@ -152,7 +152,7 @@ To maintain coherence across both projections, the Repast HPC simulation must ex
 
 During synchronization, the system first updates the status of all ghost agents across the network edges, ensuring topological consistency. Immediately following, it synchronizes the spatial buffer zones to ensure geographic consistency. Only after both synchronization barriers are cleared can the scheduler safely iterate over the local agents to calculate the logistic speed function and execute the movement algorithms.
 
-== Modifications to the original model
+=== Modifications to the original model
 
 The Repast HPC implementation of the socio-epistemic model necessitated several modifications to the original NetLogo design to accommodate the constraints and capabilities of a distributed-memory architecture. The most significant changes include:
 
@@ -164,7 +164,7 @@ $ "speed" = 2/(1 + e^(-("dist"/"age"))) - 1 $
 
 - *Removal of the gravity force*: The gravity force in the original model caused agents to be attracted to areas of higher agent density in the epistemic space, simulating the tendency of scientists to cluster around popular research topics. However, this force required agents to evaluate the positions of all other agents within a certain radius, which is computationally expensive and difficult to manage in a distributed environment. Therefore, the gravity force was also removed from the Repast HPC implementation.
 
-== Validating the Repast HPC implementation
+=== Validating the Repast HPC implementation
 
 To validate the correctness of the Repast HPC implementation of the socio-epistemic model, a comprehensive validation procedure was established. The original NetLogo model exhibited specific emergent phenomena, such as the clustering of agents in the epistemic space. The Repast HPC implementation was subjected to a series of tests to ensure that it faithfully reproduced these key behaviors under identical initial conditions. The validation process involved:
 + Running the Repast HPC model with the same initial network topology, agent distributions and epistemic space landscape as the original NetLogo model.

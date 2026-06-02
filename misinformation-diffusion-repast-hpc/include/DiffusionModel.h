@@ -56,6 +56,9 @@ class MisinformationDiffusionModel {
     double scholar_p_verify_;
     double scholar_p_forget_;
     int scholars_community_;
+    std::string partitioning_strat_;
+    int extra_compute_cycles_;
+    int extra_message_bytes_;
     double bot_p_fact_checker_;
     double bot_p_believer_;
     double bot_p_;
@@ -74,6 +77,7 @@ class MisinformationDiffusionModel {
     void initSchedule(repast::ScheduleRunner& runner);
     void recordStaticResults();
     void recordDynamicResults();
+    int getNodeOwnerRank(int node_id, std::map<int, int>* node_id_to_community_map);
 
     // metrics
     int run_id;

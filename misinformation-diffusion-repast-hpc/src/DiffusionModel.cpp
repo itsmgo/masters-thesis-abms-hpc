@@ -14,6 +14,7 @@
 #include <boost/mpi.hpp>
 #include <map>
 #include <string>
+#include <TAU.h>
 
 BOOST_CLASS_EXPORT_GUID(repast::SpecializedProjectionInfoPacket<
                             repast::RepastEdgeContent<DiffusionAgent>>,
@@ -22,7 +23,7 @@ BOOST_CLASS_EXPORT_GUID(repast::SpecializedProjectionInfoPacket<
 constexpr int INFLUENCER_PERCENTAGE = 1;
 constexpr double BOT_P_VERIFY = 0.0;
 constexpr double BOT_P_FORGET = 0.0;
-constexpr int NETWORK_COMMUNITIES_K = 8;
+constexpr int MIN_NETWORK_COMMUNITIES_K = 4;
 
 DiffusionAgentPackageProvider::DiffusionAgentPackageProvider(
     repast::SharedContext<DiffusionAgent>* agentPtr)
@@ -51,7 +52,7 @@ DiffusionAgent*
 DiffusionAgentPackageReceiver::createAgent(DiffusionAgentPackage package) {
     repast::AgentId id(package.id, package.rank, package.type, package.currentRank);
     return new DiffusionAgent(id, static_cast<AgentClass>(package.agentClass), 0.0,
-                              0.0, static_cast<BeliefState>(package.state));
+                              0.0, static_cast<BeliefState>(package.state), package.extraMessageBytes);
 }
 
 void DiffusionAgentPackageReceiver::updateAgent(DiffusionAgentPackage package) {
@@ -84,6 +85,9 @@ MisinformationDiffusionModel::MisinformationDiffusionModel(
     scholar_p_verify_ = repast::strToDouble(props->getProperty("scholar_p_verify"));
     scholar_p_forget_ = repast::strToDouble(props->getProperty("scholar_p_forget"));
     scholars_community_ = repast::strToInt(props->getProperty("scholars_community"));
+    partitioning_strat_ = props->getProperty("partitioning_strat");
+    extra_compute_cycles_ = repast::strToInt(props->getProperty("extra_compute_cycles"));
+    extra_message_bytes_ = repast::strToInt(props->getProperty("extra_message_bytes"));
     bot_p_believer_ = repast::strToDouble(props->getProperty("bot_p_believer"));
     bot_p_fact_checker_ =
         repast::strToDouble(props->getProperty("bot_p_fact_checker"));
@@ -212,20 +216,49 @@ MisinformationDiffusionModel::~MisinformationDiffusionModel() {
     delete dynamic_dataset_;
 }
 
+int MisinformationDiffusionModel::getNodeOwnerRank(int node_id, std::map<int, int>* node_id_to_community_map) {
+    if (partitioning_strat_ == "node_id_modulo") {
+        int world_size = repast::RepastProcess::instance()->worldSize();
+        return node_id % world_size;
+    } else if (partitioning_strat_ == "node_community_modulo") {
+        int world_size = repast::RepastProcess::instance()->worldSize();
+        int community_id = (*node_id_to_community_map).at(node_id); 
+        return community_id % world_size;
+    } else {
+        throw std::invalid_argument("Unsupported partitioning strategy: " + partitioning_strat_);
+    }
+}
+
 void MisinformationDiffusionModel::initNetwork() {
     int rank = repast::RepastProcess::instance()->rank();
     int world_size = repast::RepastProcess::instance()->worldSize();
 
     // Step 0: Parsing
+    TAU_PROFILE_TIMER(parse_timer, "MisinformationDiffusionModel::initNetwork__networkParsing", "", TAU_DEFAULT);
+    TAU_PROFILE_START(parse_timer);
     logger.log(repast::DEBUG,
                "Starting parsing of " + network_file_ + " network file...");
     std::vector<std::pair<int, int>> nodes; // (node_id, num_edges)
     std::vector<std::pair<int, int>> edges; // (source_node_id, target_node_id)
 
-    parseGmlFile(network_file_, nodes, edges);
+    if (network_file_.substr(network_file_.find_last_of(".") + 1) == "gml") {
+        parseGmlFile(network_file_, nodes, edges);
+    } else if (network_file_.substr(network_file_.find_last_of(".") + 1) == "csv") {
+        parseCsvFile(network_file_, nodes, edges);
+    } else {
+        throw std::invalid_argument("Unsupported file format: " + network_file_);
+    }
+    TAU_PROFILE_STOP(parse_timer);
 
+    TAU_PROFILE_TIMER(comm_dectector_timer, "MisinformationDiffusionModel::initNetwork__communityDetection", "", TAU_DEFAULT);
+    TAU_PROFILE_START(comm_dectector_timer);
+    int total_communities = world_size;
+    if (total_communities < MIN_NETWORK_COMMUNITIES_K) {
+      total_communities *= 2;
+    }
     std::map<int, int> node_id_to_community_map =
-        fluidCommunities(nodes, edges, NETWORK_COMMUNITIES_K);
+        fluidCommunities(nodes, edges, std::max(world_size, total_communities));
+    TAU_PROFILE_STOP(comm_dectector_timer);
 
     int total_nodes = nodes.size();
     logger.log(repast::DEBUG, "Parsed network file and detected " +
@@ -239,7 +272,7 @@ void MisinformationDiffusionModel::initNetwork() {
     // Separate non-scholar nodes
     std::vector<int> non_scholar_nodes;
     for (const auto& node : nodes) {
-        if (node_id_to_community_map[node.first] != scholars_community_) {
+        if (node_id_to_community_map.at(node.first) != scholars_community_) {
             non_scholar_nodes.push_back(node.first);
             continue;
         }
@@ -259,13 +292,15 @@ void MisinformationDiffusionModel::initNetwork() {
     }
 
     // Step 1: Create Local Agents
+    TAU_PROFILE_TIMER(agent_creation_timer, "MisinformationDiffusionModel::initNetwork__agentCreation", "", TAU_DEFAULT);
+    TAU_PROFILE_START(agent_creation_timer);
     logger.log(repast::DEBUG,
                "Creating local agents for rank " + std::to_string(rank) + "...");
     int total_local_agents = 0;
     total_agents = total_nodes;
     for (const auto& node : nodes) {
         int node_id = node.first;
-        int owner_rank = node_id % world_size; // Modulo partitioning
+        int owner_rank = getNodeOwnerRank(node_id, &node_id_to_community_map);
 
         if (owner_rank == rank) {
             // This agent belongs to this rank.
@@ -278,7 +313,7 @@ void MisinformationDiffusionModel::initNetwork() {
             double p_forget;
             BeliefState agent_state;
             double rand_val = repast::Random::instance()->nextDouble();
-            if (node_id_to_community_map[node_id] == scholars_community_) {
+            if (node_id_to_community_map.at(node_id) == scholars_community_) {
                 agent_class = AgentClass::SCHOLAR;
                 p_verify = scholar_p_verify_;
                 p_forget = scholar_p_forget_;
@@ -316,26 +351,29 @@ void MisinformationDiffusionModel::initNetwork() {
                 }
             }
             DiffusionAgent* agent =
-                new DiffusionAgent(id, agent_class, p_verify, p_forget, agent_state);
+                new DiffusionAgent(id, agent_class, p_verify, p_forget, agent_state, extra_message_bytes_);
             context.addAgent(agent);
             total_local_agents++;
         }
     }
-    logger.log(repast::DEBUG, "Created " + std::to_string(total_local_agents) +
+    logger.log(repast::INFO, "Created " + std::to_string(total_local_agents) +
                                   " local agents for rank " + std::to_string(rank));
+    TAU_PROFILE_STOP(agent_creation_timer);
 
     // Step 2: Detect Required Ghosts
+    TAU_PROFILE_TIMER(ghost_request_timer, "MisinformationDiffusionModel::initNetwork__ghostRequest", "", TAU_DEFAULT);
+    TAU_PROFILE_START(ghost_request_timer);
     logger.log(repast::DEBUG,
                "Requesting ghost agents for rank " + std::to_string(rank) + "...");
     repast::AgentRequest request(rank);
     std::set<int> requested_ghosts; // Prevent duplicate requests
 
-    for (auto edge : edges) {
+    for (const auto& edge : edges) {
         int source_id = edge.first;
         int target_id = edge.second;
 
-        int source_owner = source_id % world_size;
-        int target_owner = target_id % world_size;
+        int source_owner = getNodeOwnerRank(source_id, &node_id_to_community_map);
+        int target_owner = getNodeOwnerRank(target_id, &node_id_to_community_map);
 
         // If rank owns the source, but not the target, request a ghost of the target
         if (source_owner == rank && target_owner != rank) {
@@ -354,18 +392,14 @@ void MisinformationDiffusionModel::initNetwork() {
                 request.addRequest(ghost_id);
                 requested_ghosts.insert(source_id);
             }
-        } else if (rank == 0) {
-            if (requested_ghosts.find(target_id) == requested_ghosts.end()) {
-                repast::AgentId ghost_id(target_id, target_owner, 0);
-            }
-            if (requested_ghosts.find(source_id) == requested_ghosts.end()) {
-                repast::AgentId ghost_id(source_id, source_owner, 0);
-            }
         }
     }
+    TAU_PROFILE_STOP(ghost_request_timer);
 
     // Step 3: Fetch the Ghosts via MPI
-    logger.log(repast::DEBUG, "Requested " +
+    TAU_PROFILE_TIMER(ghost_fetch_timer, "MisinformationDiffusionModel::initNetwork__ghostFetch", "", TAU_DEFAULT);
+    TAU_PROFILE_START(ghost_fetch_timer);
+    logger.log(repast::INFO, "Requested " +
                                   std::to_string(requested_ghosts.size()) +
                                   " ghost agents for rank " + std::to_string(rank));
     repast::RepastProcess::instance()
@@ -373,19 +407,22 @@ void MisinformationDiffusionModel::initNetwork() {
                         DiffusionAgentPackageProvider,
                         DiffusionAgentPackageReceiver>(context, request, *provider,
                                                        *receiver, *receiver);
+    TAU_PROFILE_STOP(ghost_fetch_timer);
 
     // Step 4: Build the Edges
+    TAU_PROFILE_TIMER(edge_creation_timer, "MisinformationDiffusionModel::initNetwork__edgeCreation", "", TAU_DEFAULT);
+    TAU_PROFILE_START(edge_creation_timer);
     logger.log(repast::DEBUG,
                "Creating edges for rank " + std::to_string(rank) + "...");
     int total_local_edges = 0;
     total_edges = edges.size();
     // Now that local agents and ghost agents are in the context, we can link them
-    for (auto edge : edges) {
+    for (const auto& edge : edges) {
         int source_id = edge.first;
         int target_id = edge.second;
 
-        int source_owner = source_id % world_size;
-        int target_owner = target_id % world_size;
+        int source_owner = getNodeOwnerRank(source_id, &node_id_to_community_map);
+        int target_owner = getNodeOwnerRank(target_id, &node_id_to_community_map);
 
         // If this rank owns at least one of the nodes, the edge must exist in this
         // rank's network
@@ -405,34 +442,43 @@ void MisinformationDiffusionModel::initNetwork() {
     }
     logger.log(repast::DEBUG, "Created " + std::to_string(total_local_edges) +
                                   " edges for rank " + std::to_string(rank));
+    TAU_PROFILE_STOP(edge_creation_timer);
 }
 
 void MisinformationDiffusionModel::step() {
     logger.log(repast::DEBUG, "Starting step");
-
+    TAU_PROFILE_TIMER(state_calc_timer, "MisinformationDiffusionModel::step__stateCalculation", "", TAU_DEFAULT);
+    TAU_PROFILE_START(state_calc_timer);
     std::vector<DiffusionAgent*> local_agents;
     context.selectAgents(repast::SharedContext<DiffusionAgent>::LOCAL,
                          context.size(), local_agents);
 
     // Phase 1: Calculate stochastic transitions based on current t
     for (DiffusionAgent* agent : local_agents) {
-        agent->calculateNextState(context, network, alpha_, beta_);
+        agent->calculateNextState(context, network, alpha_, beta_, extra_compute_cycles_);
     }
     logger.log(repast::DEBUG, "Calculated all next states");
+    TAU_PROFILE_STOP(state_calc_timer);
 
     // Phase 2: Lock in the states for t+1
+    TAU_PROFILE_TIMER(state_apply_timer, "MisinformationDiffusionModel::step__stateApplication", "", TAU_DEFAULT);
+    TAU_PROFILE_START(state_apply_timer);
     for (DiffusionAgent* agent : local_agents) {
         agent->applyNextState();
     }
     logger.log(repast::DEBUG, "Applied all next states");
+    TAU_PROFILE_STOP(state_apply_timer);
 
     // Phase 3: Block-synchronize boundary ghost agents across MPI processes
+    TAU_PROFILE_TIMER(sync_timer, "MisinformationDiffusionModel::step__ghostSynchronization", "", TAU_DEFAULT);
+    TAU_PROFILE_START(sync_timer);
     repast::RepastProcess::instance()
         ->synchronizeAgentStates<DiffusionAgentPackage,
                                  DiffusionAgentPackageProvider,
                                  DiffusionAgentPackageReceiver>(*provider,
                                                                 *receiver);
     logger.log(repast::DEBUG, "Synchronized all agents");
+    TAU_PROFILE_STOP(sync_timer);
 }
 
 void MisinformationDiffusionModel::initSchedule(repast::ScheduleRunner& runner) {
@@ -455,6 +501,8 @@ void MisinformationDiffusionModel::initSchedule(repast::ScheduleRunner& runner) 
 }
 
 void MisinformationDiffusionModel::recordDynamicResults() {
+    TAU_PROFILE_TIMER(record_timer, "MisinformationDiffusionModel::recordDynamicResults__dataCount", "", TAU_DEFAULT);
+    TAU_PROFILE_START(record_timer);
     local_believers = 0;
     local_factcheckers = 0;
     local_susceptibles = 0;
@@ -501,9 +549,13 @@ void MisinformationDiffusionModel::recordDynamicResults() {
             }
         }
     }
+    TAU_PROFILE_STOP(record_timer);
 
+    TAU_PROFILE_TIMER(write_timer, "MisinformationDiffusionModel::recordDynamicResults__dataWrite", "", TAU_DEFAULT);
+    TAU_PROFILE_START(write_timer);
     dynamic_dataset_->record();
     dynamic_dataset_->write();
+    TAU_PROFILE_STOP(write_timer);
 }
 void MisinformationDiffusionModel::recordStaticResults() {
     int rank = repast::RepastProcess::instance()->rank();

@@ -3,13 +3,21 @@
 #include "repast_hpc/logger.h"
 
 #include <string>
+#include <vector>
 
 void DiffusionAgent::calculateNextState(
     repast::SharedContext<DiffusionAgent>& context,
     repast::SharedNetwork<DiffusionAgent, repast::RepastEdge<DiffusionAgent>,
                           repast::RepastEdgeContent<DiffusionAgent>,
                           repast::RepastEdgeContentManager<DiffusionAgent>>* network,
-    double alpha, double beta) {
+    double alpha, double beta, int extra_compute_cycles) {
+    
+    double dummy = 0;
+    for (int i = 0; i < extra_compute_cycles; i++) {
+        // Perform some dummy computations to simulate extra compute load
+        dummy += std::sin(i) * std::cos(i);
+    }
+
     // Bots are static and do not participate in Markov transitions
     if (type_ == BOT) {
         next_state_ = state_;
@@ -114,6 +122,9 @@ void DiffusionAgent::provideContent(DiffusionAgentPackage& package) {
     package.currentRank = id_.currentRank();
     package.state = state_;
     package.agentClass = type_;
+    package.extraMessageBytes = extra_message_bytes_;
+    // Create a vector with particular size to simulate larger package sizes and message serialization overhead
+    package.extraMessageBuffer = std::vector<int>(extra_message_bytes_ / sizeof(int), 0);
 }
 
 void DiffusionAgent::update(DiffusionAgentPackage& package) {
