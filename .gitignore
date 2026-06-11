@@ -23,5 +23,7 @@ knowledge-spread-repast-hpc/.cache
 knowledge-spread-repast-hpc/.env
 knowledge-spread-repast-hpc/compile_commands.json
 knowledge-spread-repast-hpc/frames
+knowledge-spread-repast-hpc/output/tau
+knowledge-spread-repast-hpc/props/networks
 
 notes.md

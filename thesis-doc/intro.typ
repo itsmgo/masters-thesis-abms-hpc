@@ -11,11 +11,11 @@ Given the parallel nature of agent based systems, it's logical to combine the tw
 
 == State of the art
 
-Over the past two decades, several frameworks for implementing agent-based modeling and simulation (ABMS) on high-performance computing (HPC) systems have been proposed and applied to real-world case studies. Among the most prominent examples are FLAME @flame, FLAME GPU @flameGpu, RepastHPC @repastHpc @repastWeb and DMASON @dmason. These frameworks are designed to allow domain specialists to build large-scale simulations without directly dealing with the low-level complexities of parallelism. Despite this shared motivation, they adopt different design choices: agents and environments may be defined using diverse languages and formalisms, inter-agent interactions can rely on distinct communication strategies, and different support for features such as load balancing. These architectural and implementation choices influence scalability and efficiency, leading to substantially different performance outcomes depending on the framework beign chosen and the simulation model characteristics.
+Over the past two decades, several frameworks for implementing agent-based modeling and simulation (ABMS) on high-performance computing (HPC) systems have been proposed and applied to real-world case studies. Among the most prominent examples are FLAME @flame, FLAME GPU @flameGpu, RepastHPC @repastHpc @repastWeb and DMASON @dmason. These frameworks are designed to allow domain specialists to build large-scale simulations without directly dealing with the low-level complexities of parallelism. Despite this shared motivation, they adopt different design choices: agents and environments may be defined using diverse languages and formalisms, inter-agent interactions can rely on distinct communication strategies, and different support for features such as load balancing. These architectural and implementation choices influence scalability and efficiency, leading to substantially different performance outcomes depending on the framework being chosen and the simulation model characteristics.
 
 Benchmarks on the performance discrepancies between different HPC frameworks and ABMS characteristics have been performed by @ROUSSET2016 and @MORENO2023, shedding light on the problem of which HPC framework to select depending on the simulation model. This work focuses in the RepastHPC framework to implement the parallelized versions of the agent based models. It is selected for its C++ based architecture designed specifically for TOP500 class supercomputers, utilizing MPI (Message Passing Interface) for efficient cross-process communication and spatial decomposition.
 
-The Computational Model Library provided by the CoMSES Net @comses @comsesWeb has been the primary database for exploring and publishing ABMS since its publication more than a decade ago. This platform acts as a common sharing ground of peer-reviewed, reproducible models that follow the standard ODD protocol, providing a reliable foundation for the performance analysis.
+Regarding availability of open-source real-world agent-based models, the Computational Model Library provided by the CoMSES Net @comses @comsesWeb has been the primary database for exploring and publishing ABMS since its publication more than a decade ago. This platform acts as a common sharing ground of peer-reviewed, reproducible models that follow the standard ODD protocol, providing a reliable foundation for the performance analysis.
 
 == Objectives
 
@@ -23,16 +23,13 @@ The main objective of the work is to evaluate the performance and identify the b
 
 + *Models research and selection*: Selecting two representative social network agent based models, that could be implemented in an HPC framework to support millions of agents.
 
-+ *Detailed analysis for the selected models*: The exhaustive analysis will include descriptions on the model internal logic, the agent relationship and communication, the complexity of the agent and environment logic and the inputs of outputs of the model.
++ *Detailed analysis for the selected models*: The exhaustive analysis will include descriptions on the model internal logic, the agent relationship and communication, the complexity of the agent and environment logic and the inputs and outputs of the model.
 
 + *Implementing the selected ABMS in an HPC framework*: Description of the Repast HPC framework fundamentals and how each model has to be implemented according to Repast HPC concepts like the Scheduler, the Context and MPI communication. Validation and verification of the programs to ensure that the model has been implemented properly.
 
 + *Simulation execution and analysis performance*: Benchmark executions with parameter sweeping and scalability tests to measure performance metrics like execution time, resource usage, and parallel efficiency.
 
 + *Bottleneck identification*: The main part of the analysis will be centered around identifying, quantifying and describing the nature of the inefficiencies and bottlenecks of each model.
-
-Finally, a secondary objective on a *graph partitioning algorithm benchmarking* focuses on testing a new load balancing algorithm that distributes work between nodes in an HPC cluster by partigioning a graph in a certain new way to improve the overall system performance.
-
 
 == Methodology
 
@@ -41,11 +38,11 @@ To achieve the mentioned objectives in the previous section, the following metho
 - *ABMS literature review*: Use CoMSES Net model repository and academic databases to analyse and select two social networks agent based models. In order to validate the model selection, the following properties will be analyzed:
   - _Model domain_: Description of the model representation, inputs, outputs and purpose. 
   - _Agent relationship_: Number of agent kinds and the relationship between them, description of their communication mechanism, content and criteria.
-  - _Model complexity_: Evaluation of the underlying logic for agents and environment
+  - _Model complexity_: Evaluation of the underlying logic for agents and environment.
 
 - *Implementing the ABMS in an HPC framework*: Select the appropiate framework using the benchmarks designed for ABMS performance evaluation for HPC in @MORENO2023 and @MORENO2019.
 
-- *Define testing hardware, environment and performance metrics*: The specific HPC infrastructure for executing the models is currently under evaluation. The final selection will depend on resource availability and the specific hardware requirements dictated by the complexity of the selected models.
+- *Define testing environment and performance metrics*: Each model will be evaluated under multiple scenarios and parameters to identify their effects on the chosen performance metrics.
 
 == Planning
 
@@ -84,7 +81,7 @@ Follows an enumeration and description of all the tasks needed to achieve the wo
 
 This work contributes to the advancement of computational social science by enabling larger and more accurate simulations of complex systems. By identifying performance bottlenecks in economic and social network models, this research facilitates the creation of digital twins that can be used by governments to predict economic crises or the spread of misinformation with higher fidelity.
 
-Ethically, the work promotes transparency in algorithmic decision-making by optimizing open-source tools like RepastHPC and relying on open-access model libraries like CoMSES, democratizing access to powerful simulation capabilities.
+Ethically, the work promotes transparency in algorithmic decision-making by optimizing open-source tools like RepastHPC and relying on open-access model libraries like CoMSES, democratizing access to powerful simulation capabilities. Also, the code produced by this work will be published in an open-source repository under the MIT license.
 
 Environmentally, the focus on performance optimization and bottleneck identification directly relates to energy efficiency. By reducing the computational resources required to run massive simulations, the carbon footprint of large-scale research projects can be minimized.
 

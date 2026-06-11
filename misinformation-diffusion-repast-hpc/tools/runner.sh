@@ -1,7 +1,7 @@
 # !/bin/bash
 
-RUN_RANK_ANALYSIS=false
-RUN_SIZE_ANALYSIS=true
+RUN_RANK_ANALYSIS=true
+RUN_SIZE_ANALYSIS=false
 RUN_COMBINED_RANK_AND_SIZE_ANALYSIS=false
 RUN_STRUCTURE_ANALYSIS=false
 RUN_PARTITION_ANALYSIS=false
@@ -23,13 +23,10 @@ if [ "$RUN_RANK_ANALYSIS" = true ]; then
     do
       echo "Running with $i processes..."
       export TAU_PROFILE=1
-      export TAU_TRACE=1
       export TAU_BFD=1
 
-      export PROFILEDIR=./output/tau/rank/$i/$j
-      export TRACEDIR=./output/tau/rank/$i/$j
+      export PROFILEDIR=./output/tau/$DEFAULT_NETWORK_STRUCTURE/rank/$i/$j
       mkdir -p $PROFILEDIR
-      mkdir -p $TRACEDIR
       mpirun -n $i ./bin/misinformation ./props/config.props ./props/model.props run_id=$j network_file="${NETWORK_FOLDER}/${DEFAULT_NETWORK_STRUCTURE}_network_${DEFAULT_NETWORK_SIZE}.gml"
     done
   done

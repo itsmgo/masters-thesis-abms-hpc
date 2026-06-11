@@ -8,3 +8,6 @@ runSocial = 1;
 runCentroid = 1;
 runConferences = 0;
 runGravity = 0;
+partitionStrategy = node_community_modulo
+extraComputeCycles = 0;
+extraMessageSize = 0;

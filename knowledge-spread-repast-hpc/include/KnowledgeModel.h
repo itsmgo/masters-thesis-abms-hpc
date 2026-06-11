@@ -46,6 +46,7 @@ class KnowledgeSpreadModel {
                           repast::RepastEdgeContentManager<KnowledgeAgent>>*
         socialNetwork;
     std::map<int, std::vector<std::pair<int, int>>> networkEvolutionMap;
+    std::map<int, int> agentRankById;
 
     // stores regional population and color
     repast::DiscreteValueLayer<std::pair<Color, std::vector<double>>,
@@ -60,6 +61,9 @@ class KnowledgeSpreadModel {
     bool useSocialNetData_; // "preferential attachment" vs "data"
     bool runSocial_;
     bool runCentroid_;
+    std::string partitionStrategy_;
+    int extraComputeCycles_;
+    int extraMessageSize_;
 
     KnowledgeAgentPackageProvider* provider;
     KnowledgeAgentPackageReceiver* receiver;
@@ -73,6 +77,7 @@ class KnowledgeSpreadModel {
     void evolveNetwork(int tick,
                        std::vector<KnowledgeAgent*>
                            agents); // Apply modifications acording to temporal edges
+    int getNodeOwnerRank(int nodeId, int communityId);
 
     // Core Behaviors
     std::vector<double>
@@ -82,8 +87,8 @@ class KnowledgeSpreadModel {
         std::vector<double> currentLoc); // Agents move to the region's core
     std::vector<double>
     getCloseLoc(KnowledgeAgent* agent,
-                std::vector<double>
-                    currentLoc); // Agents learn from nearest epistemic neighbor
+                std::vector<double> currentLoc,
+                std::vector<KnowledgeAgent*> allAgents); // Agents learn from nearest epistemic neighbor
 
   public:
     KnowledgeSpreadModel(std::string propsFile, int argc, char** argv,

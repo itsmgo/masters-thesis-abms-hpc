@@ -1,6 +1,6 @@
 # DEBUG, INFO, WARN, ERROR
-logger.root = DEBUG, R, stdout      
-logger.repast.system = DEBUG, R, stdout
+logger.root = INFO, R, stdout      
+logger.repast.system = INFO, R, stdout
  
 appender.R = RollingFileAppender
 appender.R.MaxBackupIndex =  10

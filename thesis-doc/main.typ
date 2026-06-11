@@ -72,11 +72,20 @@
 
 #include "performance_analysis.typ"
 
-#set page(margin: 0.85in)
-#set text(size: 10pt)
 #set heading(numbering: none)
 #show heading: it => pagebreak() + block(it.body, height: 2em)
 
 #include "conclusions.typ"
 
+= Annex I: Source Code and Reproducibility
+
+The complete source code for this Master Thesis work is available at the following URL:
+
+#link("https://github.com/itsmgo/masters-thesis-abms-hpc", [#underline("https://github.com/itsmgo/masters-thesis-abms-hpc")])
+
+#box(
+[It includes the Repast HPC implementations of both the misinformation diffusion model and the socio-epistemic knowledge spread model. The repository includes  the necessary `Makefile` build configurations and scripts in the `tools` folder for running the simulations and reproducing the validation results presented in this work. The code is licensed under the MIT License, allowing for free use, modification, and distribution with proper attribution.])
+
+#set page(margin: 0.85in)
+#set text(size: 10pt)
 #bibliography("references.bib")

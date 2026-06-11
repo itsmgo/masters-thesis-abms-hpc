@@ -12,8 +12,10 @@
 #include <boost/mpi.hpp>
 #include <cmath>
 #include <map>
+#include <random>
 #include <string>
 #include <vector>
+#include <TAU.h>
 
 BOOST_CLASS_EXPORT_GUID(repast::SpecializedProjectionInfoPacket<
                             repast::RepastEdgeContent<KnowledgeAgent>>,
@@ -29,7 +31,7 @@ const double WORLD_Y_BOUND = 50.0;
 
 const int NUM_CENTROIDS = 8;
 
-const int NETWORK_NEIGHBOUR_MAX_DEGREE = 3; // Should be 3 but I don't know if network->adjecents() works for non-local agents
+const int NETWORK_NEIGHBOUR_MAX_DEGREE = 3;
 
 const int GRAVITY_SAMPLE_RADIUS = 1;
 const int GRAVITY_POPULATION_RADIUS = 5;
@@ -155,6 +157,9 @@ KnowledgeSpreadModel::KnowledgeSpreadModel(std::string propsFile, int argc,
         repast::strToInt(props->getProperty("useSocialNetData")) == 1;
     runSocial_ = repast::strToInt(props->getProperty("runSocial")) == 1;
     runCentroid_ = repast::strToInt(props->getProperty("runCentroid")) == 1;
+    partitionStrategy_ = props->getProperty("partitionStrategy");
+    extraComputeCycles_ = repast::strToInt(props->getProperty("extraComputeCycles"));
+    extraMessageSize_ = repast::strToInt(props->getProperty("extraMessageSize"));
 
     // Initialize Projections (Space and Network)
     repast::GridDimensions dimensions(
@@ -391,6 +396,18 @@ void KnowledgeSpreadModel::setupKnowledgeSpace() {
     LOG_RANK0(logger, repast::DEBUG, "Knowledge space successfully set up");
 }
 
+int KnowledgeSpreadModel::getNodeOwnerRank(int nodeId, int communityId) {
+    if (partitionStrategy_ == "node_id_modulo") {
+        int worldSize = repast::RepastProcess::instance()->worldSize();
+        return nodeId % worldSize;
+    } else if (partitionStrategy_ == "node_community_modulo") {
+        int worldSize = repast::RepastProcess::instance()->worldSize();
+        return communityId % worldSize;
+    } else {
+        throw std::invalid_argument("Unsupported partitioning strategy: " + partitionStrategy_);
+    }
+}
+
 void KnowledgeSpreadModel::setupSocialNetwork() {
     LOG_RANK0(logger, repast::DEBUG, "Setting up social network");
     if (!useSocialNetData_) {
@@ -415,16 +432,18 @@ void KnowledgeSpreadModel::setupSocialNetwork() {
     int totalLocalAgents = 0;
     while (std::getline(birthIn, birthLine)) {
         std::stringstream ss(birthLine);
-        std::string idStr, nameStr, birthStr, xStr, yStr;
+        std::string idStr, nameStr, birthStr, xStr, yStr, communityIdStr;
 
         std::getline(ss, idStr, ',');
         std::getline(ss, nameStr, ',');
         std::getline(ss, birthStr, ',');
         std::getline(ss, xStr, ',');
         std::getline(ss, yStr, ',');
+        std::getline(ss, communityIdStr, ',');
         std::vector<double> agentLoc = {std::stod(xStr), std::stod(yStr)};
 
-        int ownerRank = i % worldSize; // Modulo partitioning
+        int ownerRank = getNodeOwnerRank(i, std::stoi(communityIdStr));
+        agentRankById[i] = ownerRank;
         repast::AgentId id(i, rank, 0);
         if (ownerRank == rank) {
             // This agent belongs to this rank.
@@ -439,7 +458,7 @@ void KnowledgeSpreadModel::setupSocialNetwork() {
         totalAgents++;
     }
     birthIn.close();
-    logger.log(repast::DEBUG, "Created " + std::to_string(totalLocalAgents) +
+    logger.log(repast::INFO, "Created " + std::to_string(totalLocalAgents) +
                                   " local agents for rank " + std::to_string(rank));
 
     // Write to file each one of the agent's coordinate and color
@@ -503,7 +522,6 @@ void KnowledgeSpreadModel::setupSocialNetwork() {
 void KnowledgeSpreadModel::evolveNetwork(int currentTick,
                                          std::vector<KnowledgeAgent*> agents) {
     int rank = repast::RepastProcess::instance()->rank();
-    int worldSize = repast::RepastProcess::instance()->worldSize();
 
     // Step 1: Detect Required Ghosts
     logger.log(repast::DEBUG,
@@ -521,8 +539,8 @@ void KnowledgeSpreadModel::evolveNetwork(int currentTick,
         int sourceId = edge.first;
         int targetId = edge.second;
 
-        int sourceOwner = sourceId % worldSize;
-        int targetOwner = targetId % worldSize;
+        int sourceOwner = agentRankById.at(sourceId);
+        int targetOwner = agentRankById.at(targetId);
 
         // If rank owns the source, but not the target, request a ghost of the target
         if (sourceOwner == rank && targetOwner != rank) {
@@ -541,19 +559,14 @@ void KnowledgeSpreadModel::evolveNetwork(int currentTick,
                 request.addRequest(ghost_id);
                 requestedGhosts.insert(sourceId);
             }
-        } else if (rank == 0) {
-            if (requestedGhosts.find(targetId) == requestedGhosts.end()) {
-                repast::AgentId ghost_id(targetId, targetOwner, 0);
-            }
-            if (requestedGhosts.find(sourceId) == requestedGhosts.end()) {
-                repast::AgentId ghost_id(sourceId, sourceOwner, 0);
-            }
         }
     }
 
     // Step 2: Fetch the Ghosts via MPI
-    logger.log(repast::DEBUG, "Requested " + std::to_string(requestedGhosts.size()) +
+    if (requestedGhosts.size() > 0) {
+        logger.log(repast::DEBUG, "Requested " + std::to_string(requestedGhosts.size()) +
                                   " ghost agents for rank " + std::to_string(rank));
+    }
     repast::RepastProcess::instance()
         ->requestAgents<KnowledgeAgent, KnowledgeAgentPackage,
                         KnowledgeAgentPackageProvider,
@@ -569,8 +582,8 @@ void KnowledgeSpreadModel::evolveNetwork(int currentTick,
         int sourceId = edge.first;
         int targetId = edge.second;
 
-        int sourceOwner = sourceId % worldSize;
-        int targetOwner = targetId % worldSize;
+        int sourceOwner = agentRankById.at(sourceId);
+        int targetOwner = agentRankById.at(targetId);
 
         // If this rank owns at least one of the nodes, the edge must exist in this
         // rank's network
@@ -588,22 +601,30 @@ void KnowledgeSpreadModel::evolveNetwork(int currentTick,
             }
         }
     }
-    logger.log(repast::DEBUG, "Created " + std::to_string(totalLocalEdges) +
-                                  " edges for rank " + std::to_string(rank));
+    if (totalLocalEdges > 0) {
+        logger.log(repast::DEBUG, "Created " + std::to_string(totalLocalEdges) +
+                                      " edges for rank " + std::to_string(rank));
+    }
 }
 
 void KnowledgeSpreadModel::step() {
-    logger.log(repast::DEBUG, "Starting step");
     int rank = repast::RepastProcess::instance()->rank();
     double currentTick =
         repast::RepastProcess::instance()->getScheduleRunner().currentTick();
+    int logLevel = currentTick % 20 == 0 ? repast::INFO : repast::DEBUG;
+    logger.log((repast::_LogLevel)logLevel, "Starting step number " + std::to_string(currentTick) + " on rank " + std::to_string(rank));
 
+    TAU_PROFILE_TIMER(state_calc_timer, "KnowledgeSpreadModel::step__stateCalculation", "", TAU_DEFAULT);
+    TAU_PROFILE_START(state_calc_timer);
     std::vector<KnowledgeAgent*> localAgents;
     context.selectAgents(repast::SharedContext<KnowledgeAgent>::LOCAL,
                          context.size(), localAgents);
     std::vector<KnowledgeAgent*> nonLocalAgents;
     context.selectAgents(repast::SharedContext<KnowledgeAgent>::NON_LOCAL,
-                         context.size(), nonLocalAgents);
+                          context.size(), nonLocalAgents);
+    std::vector<KnowledgeAgent*> allAgents;
+    allAgents.insert(allAgents.end(), localAgents.begin(), localAgents.end());
+    allAgents.insert(allAgents.end(), nonLocalAgents.begin(), nonLocalAgents.end());
 
     // Phase 1: Calculate stochastic transitions based on current t
     if (runSocial_) {
@@ -616,7 +637,7 @@ void KnowledgeSpreadModel::step() {
             agent->applyMovement(targetLoc, currentTick, distThreshold_, regionLayer);
 
             currentLoc = agent->getPosition();
-            targetLoc = getCloseLoc(agent, currentLoc);
+            targetLoc = getCloseLoc(agent, currentLoc, allAgents);
             agent->applyMovement(targetLoc, currentTick, distThreshold_, regionLayer);
         }
     }
@@ -631,8 +652,11 @@ void KnowledgeSpreadModel::step() {
         }
     }
     logger.log(repast::DEBUG, "Applied all movements");
+    TAU_PROFILE_STOP(state_calc_timer);
 
     // Phase 2: Synchronize ghost agents across MPI processes
+    TAU_PROFILE_TIMER(sync_timer, "KnowledgeSpreadModel::step__ghostSynchronization", "", TAU_DEFAULT);
+    TAU_PROFILE_START(sync_timer);
     repast::RepastProcess::instance()
         ->synchronizeAgentStatus<KnowledgeAgent, KnowledgeAgentPackage,
                                  KnowledgeAgentPackageProvider,
@@ -657,6 +681,11 @@ void KnowledgeSpreadModel::step() {
             }
         }
     }
+    if (requiredAgentIds.size() > 0) {
+        logger.log(repast::DEBUG, "Rank " + std::to_string(rank) + " requires " +
+                                    std::to_string(requiredAgentIds.size()) +
+                                    " ghost agents to be synchronized");
+    }
 
     // Step 2.2: request only NEW ones and synchronize cache
     for (const repast::AgentId requiredAgentId : requiredAgentIds) {
@@ -672,6 +701,8 @@ void KnowledgeSpreadModel::step() {
 
     // Step 2.3: batch request
     if (request.requestCount() > 0) {
+        logger.log(repast::INFO, "Requesting " + std::to_string(request.requestCount()) +
+                                  " ghost agents for rank " + std::to_string(rank));
         repast::RepastProcess::instance()
             ->requestAgents<KnowledgeAgent, KnowledgeAgentPackage,
                             KnowledgeAgentPackageProvider,
@@ -680,6 +711,10 @@ void KnowledgeSpreadModel::step() {
     }
 
     // Step 2.4: remove no longer needed ghosts from context
+    if (request.cancellations().size() > 0) {
+        logger.log(repast::INFO, "Cancelling " + std::to_string(request.cancellations().size()) +
+                                  " ghost agents for rank " + std::to_string(rank));
+    }
     std::vector<repast::AgentId> cancellations = request.cancellations();
     std::vector<repast::AgentId>::iterator idToRemove = cancellations.begin();
     while (idToRemove != cancellations.end()) {
@@ -700,6 +735,7 @@ void KnowledgeSpreadModel::step() {
                                                                 *receiver);
     synchronizedAgentIds = requiredAgentIds;
     logger.log(repast::DEBUG, "Synchronized all agents");
+    TAU_PROFILE_STOP(sync_timer);
 }
 
 std::vector<double>
@@ -732,45 +768,26 @@ KnowledgeSpreadModel::getCentroidLoc(std::vector<double> currentLoc) {
 
 std::vector<double>
 KnowledgeSpreadModel::getCloseLoc(KnowledgeAgent* agent,
-                                  std::vector<double> currentLoc) {
+                                  std::vector<double> currentLoc,
+                                  std::vector<KnowledgeAgent*> allAgents) {
     // Agents learn from a close agent in the semantic layer
+    const double thresholdSq = distThreshold_ * distThreshold_;
+    const double currentTick = repast::RepastProcess::instance()->getScheduleRunner().currentTick();
 
-    // Iterate over all agents independent of LOCAL or NON_LOCAL and find the closest one within the distance threshold
-    std::vector<KnowledgeAgent*> localAgents;
-    context.selectAgents(repast::SharedContext<KnowledgeAgent>::LOCAL,
-                          context.size(), localAgents);
-    std::vector<KnowledgeAgent*> nonLocalAgents;
-    context.selectAgents(repast::SharedContext<KnowledgeAgent>::NON_LOCAL,
-                          context.size(), nonLocalAgents);
-    std::vector<KnowledgeAgent*> allAgents;
-    allAgents.insert(allAgents.end(), localAgents.begin(), localAgents.end());
-    allAgents.insert(allAgents.end(), nonLocalAgents.begin(), nonLocalAgents.end());
-
-    // Filter agents that are within the distance threshold and are already born, and put them in a cache to randomly select from
-    std::vector<KnowledgeAgent*> neighbours;
+    // Iterate over all agents independent of LOCAL or NON_LOCAL and find one within the distance threshold
+    // Shuffle randomly to ensure random selection among equals
+    std::mt19937 gen(42);
+    std::shuffle(allAgents.begin(), allAgents.end(), gen);
     for (KnowledgeAgent* other : allAgents) {
-        if (other->getId() == agent->getId() || other->getBirth() > repast::RepastProcess::instance()->getScheduleRunner().currentTick()) {
+        if (other->getId() == agent->getId() || other->getBirth() > currentTick) {
             continue;
         }
-        double distance = sqrt(distSq(currentLoc, other->getPosition()));
-        if (distance < distThreshold_) {
-            neighbours.push_back(other);
+        if (distSq(currentLoc, other->getPosition()) > thresholdSq) {
+            continue;
         }
+        return other->getPosition();
     }
-    if (neighbours.empty()) {
-        return currentLoc;
-    }
-    
-    int randomIndex = repast::Random::instance()
-                          ->createUniIntGenerator(0, neighbours.size() - 1)
-                          .next();
-    KnowledgeAgent* target = neighbours[randomIndex];
-    std::vector<double> targetLoc = target->getPosition();
-
-    // logger.log(repast::DEBUG, "Agent " + std::to_string(agent->getId().id()) + " with current location (" + std::to_string(currentLoc[0]) + ", " + std::to_string(currentLoc[1]) +
-    //                               " found closest location ( " + std::to_string(closestLoc[0]) + ", " + std::to_string(closestLoc[1]) + " ) with distance " + std::to_string(minDist));
-
-    return targetLoc;
+    return currentLoc;
 }
 
 void KnowledgeSpreadModel::initSchedule(repast::ScheduleRunner& runner) {

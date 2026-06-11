@@ -1,18 +1,18 @@
 = Model descriptions
 
-The evaluation of High Performance Computing frameworks for Agent-Based Modelling and Simulation requires the selection of baseline models that are robust, computationally significant, and highly relevant to contemporary science. Following the methodology and objectives outlined in the introductory chapter, the models selected for this performance analysis operate within the domain of computational social science, specifically focusing on the diffusion of information in a social network. This chapter provides an exhaustive analysis of the models internal mechanisms, mathematical foundations, agent interactions, and the specific variables that will govern the subsequent HPC implementation and benchmarking phases.
+The evaluation of High Performance Computing frameworks for Agent-Based Modelling and Simulation requires the selection of baseline models that are robust, computationally significant, and relevant to contemporary science. Following the methodology and objectives outlined in the introductory chapter, the models selected for this performance analysis operate within the domain of computational social science, specifically focusing on the diffusion of information in a social network. This chapter provides an exhaustive analysis of the models internal mechanisms, mathematical foundations, agent interactions, and the specific variables that will govern the subsequent HPC implementation and benchmarking phases.
 
 == Misinformation diffusion model
 
 The first selected model, archived in the COMSES Net Computational Model Library under version 1.0.0, is titled _"Controlling the Misinformation Diffusion in Social Media by the Effect of Different Classes of Agents"_ @misinformationArticle @misinformationComses and describes the spread of misinformation and the corresponding countermeasures in digital social networks.
 
-This model represents a sophisticated architectural extension of the foundational Susceptible-Believer-FactChecker (SBFC) epidemic model originally proposed by Tambuscio et al. @TambuscioRuffoFlamminiMenczer2015 @Tambuscio2020. While the original SBFC framework established the mathematical bedrock for simulating the competitive diffusion of a viral hoax and its debunking information within a homogeneous population, the selected extended model introduces significant topological and behavioral complexities that mirror real-world dynamics. By categorizing the network nodes into distinct, heterogeneous agent types: Scholars, Influencers, Normal Agents, and Bots, the model accurately captures the asymmetric influence and dynamic belief structures present in real-world platforms like Facebook @Willmore2016Analysis.
+This model represents an architectural extension of the foundational Susceptible-Believer-FactChecker (SBFC) epidemic model originally proposed in @TambuscioRuffoFlamminiMenczer2015 @Tambuscio2020. While the original SBFC framework established the mathematical model for simulating the competitive diffusion of a viral hoax and its debunking information within a homogeneous population, the selected extended model introduces significant topological and behavioral complexities that mirror real-world dynamics. By categorizing the network nodes into distinct, heterogeneous agent types: Scholars, Influencers, Normal Agents, and Bots, the model accurately captures the asymmetric influence and dynamic belief structures present in real-world platforms like Facebook @Willmore2016Analysis.
 
-From a computational perspective, this selected model serves as an ideal stress-test for HPC performance analysis. The introduction of heterogeneous agent classes and targeted intervention strategies significantly increases the computational load required for each agent evaluation cycle. Furthermore, simulating this environment over a large-scale, highly connected graph introduces intricate memory access patterns and inter-agent communication dependencies that are notoriously difficult to parallelize efficiently. These characteristics are precisely what expose the performance bottlenecks, parallelization inefficiencies, and synchronization overheads inherent in distributed-memory platforms such as Repast HPC. 
+From a computational perspective, the introduction of heterogeneous agent classes and targeted intervention strategies significantly increases the computational load required for each agent evaluation cycle. Furthermore, simulating this environment over a large-scale, highly connected graph introduces intricate memory access patterns and inter-agent communication dependencies that supose a challenge to parallelize efficiently. These characteristics are precisely what expose the performance bottlenecks, parallelization inefficiencies, and synchronization overheads inherent in distributed-memory platforms such as Repast HPC. 
 
 === Epidemiological foundations: The baseline SBFC framework
 
-The Susceptible-Believer-FactChecker model conceptualizes the spread of misinformation not as a simple, unidirectional contagion, but as a complex, simultaneous competitive process between a virus (the hoax) and its cure (the debunking information). By modeling hoaxes analogously to biological viruses, the framework borrows heavily from traditional compartmental epidemic models such as the Susceptible-Infected-Recovered (SIR) and Susceptible-Infected-Susceptible (SIS) paradigms. However, it splits the "Infected" compartment into two distinct and adversarial sub-compartments, creating a much more dynamic state space. 
+The Susceptible-Believer-FactChecker model conceptualizes the spread of misinformation not as a simple, unidirectional contagion, but as a complex, simultaneous competitive process between a virus (the hoax) and its cure (the debunking information). By modeling hoaxes analogously to biological viruses, the framework borrows heavily from traditional compartmental epidemic models such as the Susceptible-Infected-Recovered (SIR) and Susceptible-Infected-Susceptible (SIS) paradigms. However, it splits the "Infected" compartment into two distinct and adversarial sub-compartments, creating a more dynamic state space. 
 
 #v(0.25cm)
 *I. Agent State Space and Network Topology*
@@ -64,7 +64,7 @@ $ g_i (t) = beta (n_i^F (t) dot (1-alpha))/(n_i^B (t) dot (1+alpha) + n_i^F (t) 
 
 In these formulations, $n_i^B (t)$ and $n_i^F (t)$ represent the absolute, integer count of agent $i$'s direct neighbours who are currently in the Believer and Fact-Checker states at time $t$. The parameter $beta in [0, 1]$ represents the base spreading rate, defining the overall transmissibility or virality of information across the network, independent of its truthfulness. The parameter $alpha in [0, 1]$ is a constant parameter for the credibility of the hoax. It is critical to note that $f_i (t) + g_i (t) = \beta$, which aligns the total aggregate infection rate with traditional SIS epidemic models, ensuring mathematical consistency.
 
-From a high-performance computing perspective, the evaluation of $n_i^B (t)$ and $n_i^F (t)$ represents one of the most significant computational burdens in the simulation. For an agent to calculate its spreading functions, the processor must fetch the state data of every single vertex connected to agent $i$. In dense, scale-free networks, a single agent may possess thousands of edges, requiring massive, non-contiguous memory access operations that frequently result in cache misses and degraded performance.
+From a high-performance computing perspective, the evaluation of $n_i^B (t)$ and $n_i^F (t)$ represents one of the most significant computational burdens in the simulation. For an agent to calculate its spreading functions, the processor must fetch the state data of every single vertex connected to agent $i$. In dense, scale-free networks, a single agent may possess thousands of edges, requiring massive, non-contiguous memory access operations that frequently result in degraded performance.
 
 #v(0.5cm)
 *IV. Results*
@@ -158,9 +158,9 @@ The defined input variables and their specific tested values, derived from the o
 
 To verify that the newly developed C++ Repast HPC implementation correctly captures the intricate dynamics of the original model, a rigorous validation protocol must be established. Because the underlying transition functions are highly stochastic, direct 1:1 validation of a single run is mathematically impossible; instead, the validation framework must rely on demonstrating statistical equivalence over large sample sizes.
 
-The primary metrics for validation will be the mean densities of the three agent states $"B"_infinity$, $"FC"_infinity$, and $"S"_infinity$, at the conclusion of the 168-tick simulation cycle. The baseline experiments in the original literature generated 4 replicates for each of the 13,824 settings. Analysis of these replicates revealed a standard deviation of less than 5% relative to the total agent population, indicating exceptionally high macroscopic model stability despite individual micro-level stochasticity.
+The primary metrics for validation will be the mean densities of the three agent states $"B"_infinity$, $"FC"_infinity$, and $"S"_infinity$, at the conclusion of the 168-tick simulation cycle. The baseline experiments in the original literature generated 4 replicates for each of the 13,824 settings. Analysis of these replicates revealed a standard deviation of less than 5% relative to the total agent population, indicating good macroscopic model stability despite individual micro-level stochasticity.
 
-The Repast HPC model will be executed using identical input parameter matrices and identical network topology. The resulting macroscopic curves must statistically match the baselines within a strict 95% confidence interval. For example, the explosive, non-linear growth of Believers when hoax credibility is maximized ($alpha=0.8$), versus the total systemic dominance of Fact-Checkers when hoax credibility is minimized ($alpha=0.3$), must be perfectly replicated. Additionally, the localized, systemic effects of the heterogeneous classes, such as the specific 8-9% reduction in the global Believer population when the Scholar class is properly configured and educated, must be demonstrably reproducible in the parallelized environment.
+The Repast HPC model will be executed using identical input parameter matrices and identical network topology. The resulting macroscopic curves must statistically match the baselines within a strict confidence interval. For example, an interesting dynamic to replicate would be the non-linear growth of Believers when hoax credibility is maximized ($alpha=0.8$), versus the total systemic dominance of Fact-Checkers when hoax credibility is minimized ($alpha=0.3$). Additionally, the localized, systemic effects of the heterogeneous classes, such as the specific 8-9% reduction in the global Believer population when the Scholar class is properly configured and educated, must be demonstrably reproducible in the parallelized environment.
 
 Only once this statistical parity is achieved, the performance analysis phase can be started. The benchmark suite will then systematically scale the agent population and the allocated MPI processes, recording total execution time, memory overhead, parallel efficiency, and MPI communication latency to fully expose, analyze, and document the architectural bottlenecks of distributing complex social network models across High Performance Computing environments.
 
@@ -168,7 +168,7 @@ Only once this statistical parity is achieved, the performance analysis phase ca
 
 == Socio-epistemic knowledge spread model
 
-The second selected model is the socio-epistemic framework titled _"An Opinion Dynamics of Science? Agent-Based Modeling of Knowledge Spread"_. Authored by Bernardo Buarque and published via the CoMSES Net Computational Model Library under version 1.0.0 @knowledgeComses, this model was developed under the auspices of the ModelSEN project, an initiative dedicated to modeling historical knowledge processes and the evolution of science @ModelSEN.
+The second selected model is the socio-epistemic framework titled _"An Opinion Dynamics of Science? Agent-Based Modeling of Knowledge Spread"_. Authored by Bernardo Buarque and published via the CoMSES Net Computational Model Library under version 1.0.0 @knowledgeComses, this model was developed under the guidance of the ModelSEN project, an initiative dedicated to modeling historical knowledge processes and the evolution of science @ModelSEN.
 
 The model operates as a socio-epistemic simulation engine, conceptually based in the literature of opinion dynamics and the sociology of scientific knowledge. It is inherently multi-layered, simulating both the tangible social networks of researchers, represented as a graph, and the abstract epistemic spaces they navigate, represented as clusters in a two-dimensional spatial lattice. The fundamental purpose of the model is to identify and isolate the socio-structural mechanisms that drive the creation, diffusion, and eventual consensus of mental models within a bounded scientific community. By simulating the interplay between scientists, institutional proximity, and conceptual coherence, the model aims to answer how marginal ideas transition into mainstream paradigms.
 
@@ -180,8 +180,8 @@ The following analysis systematically decomposes the historical validation param
 
 To ensure the simulation generates sociologically valid outputs, the model is based in the historical phenomenon known as the _Renaissance of General Relativity_ @relativity2019 @Blum2020renaissance. This paradigm shift in theoretical physics, which occurred between 1925 and 1970, provides the foundational validation parameters and the empirical edge-list data utilized when the simulation operates in its historically driven mode. Understanding the exact contours of this historical dataset is critical, as any successful HPC implementation must not only execute efficiently but also accurately replicate the emergent macro-phenomena observed in the historical record.
 
-#v(0.25cm)
-*The Dynamics of the General Relativity Renaissance*
+#v(1.5cm)
+*I. The Dynamics of the General Relativity Renaissance*
 
 The status of the General Theory of Relativity underwent a radical and structurally profound transformation across a four-decade timespan. The historical consensus divides this evolution into two highly distinct phases, which the socio-epistemic model attempts to replicate via emergent agent behavior and spatial clustering.
 
@@ -192,9 +192,9 @@ The subsequent phase, termed the _Renaissance_ (spanning from the mid-1950s to 1
 However, extensive multilayer network analyses conducted by researchers associated with the ModelSEN project have empirically disproven this external-trigger hypothesis @relativity2019 @schlattmann2024trajectories. The historical data demonstrates that a fundamental structural shift in the underlying social collaboration network of physicists occurred between the late 1950s and early 1960s, significantly prior to these external astrophysical discoveries. The core mathematical signature of this shift was the sudden formation of a "giant component" within the social network graph, indicating a rapid, large-scale integration of previously isolated research clusters into a unified socio-epistemic community. The fundamental validation target of the ABM is to simulate the precise localized agent interaction rules that organically precipitate the emergence of this giant component without relying on external exogenous shocks.
 
 #v(0.25cm)
-*Empirical Network Parameters*
+*II. Empirical Network Parameters*
 
-When the simulation is initialized using empirical data rather than procedural generation, it relies on highly specific network parameters extracted through analysis. The construction of this validation dataset required a complex, multi-layered approach to capture the full picture of scientific interaction, acknowledging that simple co-authorship records are insufficient to map the true flow of knowledge. The node population of the model, termed the _General Relativity Social Space_, comprises a total of 971 unique authors acting as individual agents, described in @KnowledgeNetwork. This population was aggregated through meticulous historical data curation and bibliometric extraction @Lalli2020.
+When the simulation is initialized using empirical data rather than procedural generation, it relies on highly specific network parameters extracted through analysis. The construction of this validation dataset required to capture the full picture of scientific interaction, acknowledging that simple co-authorship records are insufficient to map the true flow of knowledge. The node population of the model, termed the _General Relativity Social Space_, comprises a total of 971 unique authors acting as individual agents, described in @KnowledgeNetwork. This population was aggregated through meticulous historical data curation and bibliometric extraction @Lalli2020.
 
 #figure(
   table(
@@ -224,7 +224,7 @@ In the computational implementation of the model, agent activity is strictly tem
 === Architecture and internal computational logic
 
 #v(0.25cm)
-*General model description*
+*I. General model description*
 
 The architecture of the NetLogo implementation relies on a highly coupled, dual-layer environment representing a conceptual synthesis of continuous spatial simulation and discrete network theory. This dual topology requires agents to manage coordinates in a Cartesian space while simultaneously maintaining references to a graph structure. This structural duality forms the core challenge for subsequent HPC translation.  
 
@@ -237,7 +237,7 @@ The interactions driving the simulation are heterogeneous, preventing uniform co
 The primary observation metric used to evaluate the terminal state of the simulation is defined as the _Epistemic Share_. The system continuously tracks the global distribution of the active agent population across the distinct topical clusters established during initialization. By outputting a dynamic time-series plot of the proportional density of agents residing within each defined conceptual region, one can quantitatively measure the degree of conceptual polarization versus consensus achieved by the end of the simulation lifecycle.  
 
 #v(0.25cm)
-*The epistemic layer and K-means initialization*
+*II. The epistemic layer and K-means initialization*
 
 The cognitive space of the scientific community is modeled as a continuous two-dimensional regular lattice. Each discrete spatial coordinate within this lattice is bound to a mental model. The spatial arrangement of the environment is inherently semantic; the Euclidean distance between any two points directly correlates to their conceptual similarity. For example, neighboring lattice nodes might represent two nearly identical theoretical physics models that differ solely by the inclusion or exclusion of a single causal variable or mathematical constant. Agents navigating this space are effectively engaging in epistemic exploration, gradually transitioning their beliefs from one conceptual paradigm to another.
 
@@ -246,7 +246,7 @@ The setup phase of this epistemic layer is computationally intensive, as it proc
 To formalize these abstract regions into concrete geometric zones, the model invokes its clustering routine. Eight centroid points are instantiated and placed at the exact same coordinates as eight of the points representing literature entities, randomly chosen. Then, each of the 10.000 points calculates its Euclidean distance to all active centroids and assigns itself to the nearest one, updating its internal color state to match the assigned centroid. Finally, each centroid recalculates its own coordinate position to match the exact mathematical mean of the X and Y coordinates of all data points currently assigned to it. The 10.000 temporary data points are then discarded.
 
 #v(0.25cm)
-*The social layer and temporal graph dynamics*
+*III. The social layer and temporal graph dynamics*
 
 Superimposed directly over the epistemic lattice is a topological graph representing the social and institutional ties between the scientific agents. The initialization of this network layer is highly configurable, offering two distinct operational modes governed by the global input parameters.  
 
@@ -260,7 +260,7 @@ Conversely, in the empirical data mode, the system invokes file input operations
 The core execution loop of the model simulates the passage of time over 100 discrete ticks. During each tick, agents execute a series of decision-making algorithms that determine their trajectory across the epistemic lattice. These movements are strictly governed by cognitive constraints and a highly specific set of attraction forces, all mathematically modulated by a universal velocity equation.  
 
 #v(0.25cm)
-*Cognitive constraints: absorptive capacity, cognitive coherence and the movement speed*
+*IV. Cognitive constraints: absorptive capacity, cognitive coherence and the movement speed*
 
 The system implements theoretical concepts from the sociology of science to create rigid boundaries on agent behavior:
 
@@ -272,7 +272,7 @@ When an agent successfully targets a valid focal point within its absorptive cap
 
 $ "speed" = 1/(1 + e^(- ("birth" times "distance"))) $
 
-This specific mathematical formulation is theabsolute core of the agent behavioral dynamics, yielding sociological implications:
+This specific mathematical formulation is the core of the agent behavioral dynamics, yielding sociological implications:
 - The `birth` variable represents the simulation tick at which the agent entered the system. The speed formula dictates that agents with lower birth values (which conceptually equates to older, more established, and tenured scientists) move slower across the epistemic lattice. This simulates academic rigidity and the historically observed decreasing likelihood of senior scientists radically altering their established theoretical paradigms.
 - The `distance` variable further modulates the speed's sigmoid curve. This exponential relationship ensures that agents decelerate asymptotically as they approach their conceptual target, mimicking the gradual nature of scientific consensus building, where the final minor theoretical alignments take substantially longer than initial broad agreements.
 
@@ -292,14 +292,16 @@ During the execution phase, agents select their focal points based on five disti
 - Finally, the *conference aggregation force* simulates the effects that academic conferences have in reaching a general consensus. A random subset of twenty agents is dynamically tagged with a boolean flag representing attendance. The system calculates the aggregate center of mass of this specific cohort. All tagged attendees then temporarily bypass their standard routines to traverse toward this collective focal point, artificially forcing mixing between potentially distant paradigms.
 
 #figure(
-  image("media/knowledge_forces.pdf", width: 75%),
+  image("media/knowledge_forces.pdf", width: 65%),
   caption: "Forces that drive the movement of an agent through the epistemic landscape",
   placement: auto,
 ) <KnowledgeForces>
 
-=== Experimental input parameters
+=== Experimental input parameters and validation
 
 Evaluating the performance of this model within an HPC framework requires a rigorous, systematic parameter sweep. The experimental space must push the simulation across varied phases of execution. The defined input variables for the model are detailed in @KnowledgeParameters.
+
+The validation of the model will measure the _Epistemic Share_ of each cluster under the same generated epistemic landscape in Netlogo and Repast HPC, to validate that the dynamics of both models are identical under a certain degree of confidence.
 
 #figure(
   table(
