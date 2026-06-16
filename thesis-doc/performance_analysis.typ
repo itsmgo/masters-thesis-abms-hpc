@@ -34,44 +34,6 @@ To better understand the distribution of the execution time among the different 
 ) <TimersDescription>
 
 #v(10pt)
-*Execution time decomposition*
-
-// To analyse the impact of MPI communication on the overall performance of the misinformation diffusion model, execution traces generated with TAU were examined using the Jumpshot trace visualization tool. This analysis provides a high-level decomposition of the model execution time, illustrated in @SchematicTimeBreakdown.
-
-The total execution time of the sequential implementation can be expressed as the sum of the initialization phase and the execution time of all simulation ticks:
-$
-T_"total" = T_"init" + sum_(i=1)^N T_"step,i"
-$
-where $N = 236$ corresponds to the number of independent ticks executed in each simulation.
-
-For the RepastHPC implementation, the execution time includes a computation time and a synchronization overhead. The total execution time can therefore be decomposed as:
-$
-T_"total"^("RHPC") = T_"init"^("RHPC") + T_"sync,init" + sum_(i=1)^N (T_"step,i"^("RHPC") + T_"sync,i")
-$
-where $T_"sync,init"$ represents the synchronization time incurred during initialization and $T_"sync,i"$ corresponds to the synchronization overhead at tick $i$.
-
-The difference between the parallel and sequential execution times is then given by:
-$
-Delta T_"total" = T_"total"^("RHPC") - T_"total"
-$
-which can be expanded as:
-$
-Delta T_"total" = (T_"init"^("RHPC") - T_"init") + T_"sync,init" + sum_(i=1)^N ((T_"step,i"^("RHPC") - T_"step,i") + T_"sync,i")
-$
-For the RepastHPC implementation to provide a performance improvement over the sequential execution, the condition
-$
-Delta T_"total" < 0
-$
-must hold. Consequently, the cumulative synchronization overhead must remain smaller than the computational savings achieved through parallelization:
-$
-T_"sync,init" + sum_(i=1)^N T_"sync,i" < (T_"init" - T_"init"^("RHPC")) + sum_(i=1)^N (T_"step,i" - T_"step,i"^("RHPC"))
-$
-
-Synchronization time is defined as the sum of two communication components: the synchronization of ghost agents between MPI ranks and the global tick synchronization performed at the end of each tick. Furthermore, the execution time of an individual tick can be decomposed into computation, synchronization and result-processing phases.
-
-The synchronization metric reported throughout this chapter corresponds to the arithmetic mean of the total synchronization time measured across all MPI ranks. This metric provides a convenient estimate of communication overhead but does not represent the true global synchronization cost. A more accurate measure would require identifying each synchronization window individually and summing the maximum synchronization time observed across all ranks for every synchronization event. Due to limitations of the available trace-analysis workflow, extracting synchronization windows at this level of detail proved impractical. As a result, the reported synchronization times should be interpreted as a lower-bound estimate of the actual synchronization overhead.
-
-#v(10pt)
 *Default setup*
 
 When executing the performance analysis, a systematic exploration of the model parameters has been conducted to understand their impact on the performance metrics. The parameters studied include the number of MPI ranks, the number of agents in the synthetic network, the type of synthetic network used, the average degree of the network, the partitioning strategy for distributing the network across MPI ranks, and two synthetic factors: MPI message size and computational load.
